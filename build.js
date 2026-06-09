@@ -116,10 +116,13 @@ writeFileSync("public/index.html", `<!doctype html>
           throw new Error("The playback server returned a non-JSON response. Try again in a minute.");
         }
         if (!response.ok) throw new Error(data.error || "Could not load map.");
+        loadingText.textContent = "Loaded " + data.tracks.length.toLocaleString() + " tracks. Rendering playback map...";
         startPlayback(data);
         history.replaceState(null, "", "?map=" + encodeURIComponent(input));
       } catch (err) {
-        error.textContent = err.message;
+        document.getElementById("loader").hidden = false;
+        document.querySelector(".topbar").hidden = true;
+        error.textContent = err.message || "Could not load playback.";
       } finally {
         clearInterval(statusTimer);
         loading.classList.remove("active");
@@ -128,8 +131,12 @@ writeFileSync("public/index.html", `<!doctype html>
       }
     }
     function startPlayback(data) {
-      document.getElementById("loader").hidden = true;
-      document.querySelector(".topbar").hidden = false;
+      if (!data || !Array.isArray(data.tracks) || data.tracks.length === 0) {
+        throw new Error("No replayable timestamped tracks were found on this map.");
+      }
+      if (!data.bounds || !Number.isFinite(data.bounds.minLat) || !Number.isFinite(data.bounds.minLng) || !Number.isFinite(data.bounds.maxLat) || !Number.isFinite(data.bounds.maxLng)) {
+        throw new Error("The map returned tracks, but their map bounds were invalid.");
+      }
       map.fitBounds(L.latLngBounds([data.bounds.minLat, data.bounds.minLng], [data.bounds.maxLat, data.bounds.maxLng]).pad(.08));
       const visible = new Set(data.tracks.map(t => t.id));
       const layers = new Map();
@@ -189,6 +196,8 @@ writeFileSync("public/index.html", `<!doctype html>
       stale.onchange = () => update(current);
       mode.onchange = () => update(current);
       update(data.start);
+      document.getElementById("loader").hidden = true;
+      document.querySelector(".topbar").hidden = false;
     }
   </script>
 </body>
