@@ -184,15 +184,13 @@ function normalizeMarker(feature, className, id, folders) {
     lng: Number(lng.toFixed(7)),
     lat: Number(lat.toFixed(7)),
     ele: Number.isFinite(ele) ? Math.round(ele) : null,
-    time: markerTimestamp(properties, time)
+    time: markerCreatedTime(properties)
   };
 }
 
-function markerTimestamp(properties, coordinateTime) {
-  for (const value of [properties.timestamp, properties["-created-on"], coordinateTime]) {
-    if (Number.isFinite(value) && value > 0) return Math.round(value);
-  }
-  return null;
+function markerCreatedTime(properties) {
+  const value = properties["-created-on"];
+  return Number.isFinite(value) && value > 0 ? Math.round(value) : null;
 }
 
 function markerGroups(markers) {
