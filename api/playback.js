@@ -11,7 +11,7 @@ export default async function handler(request, response) {
     const mapId = parseMapId(input);
     if (!mapId) return response.status(400).json({ error: "Paste a CalTopo map URL or map ID." });
     const data = await exportMap(mapId);
-    response.setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate=600");
+    response.setHeader("Cache-Control", "no-store, max-age=0");
     return response.status(200).json(data);
   } catch (error) {
     return response.status(500).json({ error: error.message });

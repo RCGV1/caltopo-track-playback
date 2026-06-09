@@ -113,7 +113,7 @@
         loadingText.textContent = "Still loading CalTopo tracks... " + seconds + "s";
       }, 5000);
       try {
-        const response = await fetch(API_BASE + "/api/playback?url=" + encodeURIComponent(input));
+        const response = await fetch(API_BASE + "/api/playback?url=" + encodeURIComponent(input) + "&_=" + Date.now(), { cache: "no-store" });
         const text = await response.text();
         let data;
         try {
