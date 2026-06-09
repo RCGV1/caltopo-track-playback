@@ -1,4 +1,6 @@
 const CLASSES = ["Shape", "AppTrack", "FieldTrack", "LiveTrack"];
+const MARKER_CLASSES = ["Marker"];
+const FOLDER_CLASSES = ["Folder"];
 const MIN_POINTS = 2;
 
 export default async function handler(request, response) {
@@ -34,7 +36,19 @@ async function exportMap(mapId) {
   const summary = await fetchJson(`https://caltopo.com/api/v1/map/${mapId}/since/0`);
   const idsByClass = summary?.result?.ids || {};
   const tracks = [];
+  const folders = new Map();
+  const markers = [];
   const scanned = {};
+
+  for (const className of FOLDER_CLASSES) {
+    const ids = Array.isArray(idsByClass[className]) ? idsByClass[className] : [];
+    scanned[className] = ids.length;
+    for (const id of ids) {
+      const body = await fetchJson(`https://caltopo.com/api/v1/map/${mapId}/${className}/${id}`);
+      const folder = normalizeFolder(body?.result, id);
+      if (folder) folders.set(id, folder);
+    }
+  }
 
   for (const className of CLASSES) {
     const ids = Array.isArray(idsByClass[className]) ? idsByClass[className] : [];
@@ -46,7 +60,18 @@ async function exportMap(mapId) {
     }
   }
 
+  for (const className of MARKER_CLASSES) {
+    const ids = Array.isArray(idsByClass[className]) ? idsByClass[className] : [];
+    scanned[className] = ids.length;
+    for (const id of ids) {
+      const body = await fetchJson(`https://caltopo.com/api/v1/map/${mapId}/${className}/${id}`);
+      const marker = normalizeMarker(body?.result, className, id, folders);
+      if (marker) markers.push(marker);
+    }
+  }
+
   tracks.sort((left, right) => left.start - right.start || left.title.localeCompare(right.title));
+  markers.sort((left, right) => left.category.localeCompare(right.category) || left.title.localeCompare(right.title));
   if (tracks.length === 0) throw new Error(`No timestamped line tracks found on map ${mapId}.`);
 
   const start = Math.min(...tracks.map((track) => track.start));
@@ -71,7 +96,9 @@ async function exportMap(mapId) {
     start,
     end,
     bounds,
-    tracks
+    tracks,
+    markers,
+    markerGroups: markerGroups(markers)
   };
 }
 
@@ -116,6 +143,92 @@ function normalizeTrack(feature, className, id) {
     end: last.time,
     points
   };
+}
+
+function normalizeFolder(feature, id) {
+  const properties = feature?.properties || {};
+  return {
+    id,
+    title: cleanText(properties.title || properties.name || `Folder ${id}`),
+    visible: properties.visible !== false
+  };
+}
+
+function normalizeMarker(feature, className, id, folders) {
+  const geometry = feature?.geometry;
+  const properties = feature?.properties || {};
+  if (geometry?.type !== "Point") return null;
+  const coord = Array.isArray(geometry.coordinates) ? geometry.coordinates : [];
+  const [lng, lat, ele, time] = coord;
+  if (!Number.isFinite(lng) || !Number.isFinite(lat)) return null;
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+  const folderId = properties.folderId || "";
+  const folder = folderId ? folders.get(folderId) : null;
+  const title = cleanText(properties.title || properties.name || `${className} ${id}`);
+  const description = cleanText(properties.description || "");
+  const symbol = cleanText(properties["marker-symbol"] || properties.symbol || "");
+  const color = normalizeColor(properties["marker-color"] || properties.color || "");
+  const category = markerCategory({ title, description, symbol, folderTitle: folder?.title || "" });
+  return {
+    id,
+    className,
+    title,
+    description,
+    folderId,
+    folderTitle: folder?.title || "",
+    category,
+    symbol,
+    color: color || colorForMarkerCategory(category),
+    size: cleanText(properties["marker-size"] || ""),
+    labelVisible: Boolean(properties.labelVisible),
+    lng: Number(lng.toFixed(7)),
+    lat: Number(lat.toFixed(7)),
+    ele: Number.isFinite(ele) ? Math.round(ele) : null,
+    time: Number.isFinite(time) ? Math.round(time) : null
+  };
+}
+
+function markerGroups(markers) {
+  const counts = new Map();
+  for (const marker of markers) counts.set(marker.category, (counts.get(marker.category) || 0) + 1);
+  return [...counts.entries()]
+    .sort((left, right) => left[0].localeCompare(right[0]))
+    .map(([name, count]) => ({ name, count }));
+}
+
+function markerCategory(marker) {
+  const folder = marker.folderTitle.toLowerCase();
+  if (/(hazard|gravel|restricted|dead zone)/.test(folder)) return "Hazards";
+  if (/(rest stop|\brest\b|\brs\b|refresh)/.test(folder)) return "Rest Stops";
+  if (/(checkpoint|monitor)/.test(folder)) return "Checkpoints";
+  if (/(water|restroom|bathroom|shop|services|cell)/.test(folder)) return "Services";
+  if (/(hq|start|finish|command)/.test(folder)) return "HQ";
+  const haystack = `${marker.folderTitle} ${marker.title} ${marker.description} ${marker.symbol}`.toLowerCase();
+  if (/(hazard|construction|closed|closure|danger|crash|downed|down rider|medical|incident|flat tire|one[ -]?way|confusing|restricted|unauthorized)/.test(haystack)) return "Hazards";
+  if (/(rest stop|\(rs\)|\brs\b|refresh|foodservice|aid station)/.test(haystack)) return "Rest Stops";
+  if (/(hq|start|finish|staging|command)/.test(haystack)) return "HQ";
+  if (/(checkpoint|monitor|\(cp\)|\bcp\b|binoc)/.test(haystack)) return "Checkpoints";
+  if (/(water|restroom|bathroom|toilet|shop|services|store|hut|lodging)/.test(haystack)) return "Services";
+  return marker.folderTitle || "Other Markers";
+}
+
+function colorForMarkerCategory(category) {
+  if (category === "Hazards") return "#d21f1f";
+  if (category === "Rest Stops") return "#0f7b4f";
+  if (category === "Checkpoints") return "#111827";
+  if (category === "Services") return "#6a1b9a";
+  if (category === "HQ") return "#0b6f6a";
+  return "#475569";
+}
+
+function normalizeColor(value) {
+  const text = String(value || "").trim();
+  const match = text.match(/^#?([0-9a-f]{6})$/i);
+  return match ? `#${match[1]}` : "";
+}
+
+function cleanText(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
 }
 
 function timestampedPoint(coord) {

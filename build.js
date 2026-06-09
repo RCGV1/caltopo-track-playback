@@ -32,7 +32,7 @@ writeFileSync("public/index.html", `<!doctype html>
     .error { margin-top: 10px; color: #9b1c1c; font-size: 13px; }
     .topbar { position: absolute; top: 12px; left: 54px; right: 12px; z-index: 500; display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 360px); gap: 12px; align-items: start; pointer-events: none; }
     .panel { pointer-events: auto; background: #fff; border: 1px solid rgba(0,0,0,.12); box-shadow: 0 8px 24px rgba(22,32,42,.18); border-radius: 8px; }
-    .controls { min-width: 0; min-height: 56px; padding: 10px 12px; display: grid; grid-template-columns: auto minmax(120px,1fr) minmax(92px,116px) minmax(92px,116px) minmax(92px,116px) minmax(140px,190px); gap: 10px; align-items: center; }
+    .controls { min-width: 0; min-height: 56px; padding: 10px 12px; display: grid; grid-template-columns: auto minmax(120px,1fr) minmax(92px,116px) minmax(92px,116px) minmax(92px,116px) minmax(140px,190px); gap: 10px; align-items: center; overflow: hidden; }
     input[type=range] { width: 100%; accent-color: #0b6f6a; }
     .control-label { display: grid; gap: 3px; color: #5f6b76; font-size: 11px; line-height: 1; }
     .control-label select { width: 100%; min-width: 0; font-size: 14px; }
@@ -40,13 +40,29 @@ writeFileSync("public/index.html", `<!doctype html>
     .summary { max-height: calc(100vh - 24px); overflow: auto; padding: 12px; }
     .summary h1 { margin: 0 0 4px; font-size: 17px; line-height: 1.2; }
     .meta { color: #5f6b76; font-size: 12px; line-height: 1.35; margin-bottom: 10px; }
-    .track-list { display: grid; gap: 6px; }
-    label.track { display: grid; grid-template-columns: auto auto 1fr auto; gap: 8px; align-items: center; min-height: 30px; font-size: 13px; }
+    .section { display: grid; gap: 6px; margin-top: 12px; }
+    .section:first-of-type { margin-top: 0; }
+    .section-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #41505d; font-size: 12px; font-weight: 800; letter-spacing: .02em; text-transform: uppercase; }
+    .section-title label { display: inline-flex; align-items: center; gap: 6px; color: #17212b; font-size: 12px; font-weight: 700; text-transform: none; letter-spacing: 0; }
+    .track-list, .marker-list { display: grid; gap: 6px; }
+    label.track, label.marker-row { display: grid; grid-template-columns: auto auto 1fr auto; gap: 8px; align-items: center; min-height: 30px; font-size: 13px; }
+    label.marker-row { grid-template-columns: auto auto 1fr auto; }
     .swatch { width: 12px; height: 12px; border-radius: 50%; border: 1px solid rgba(0,0,0,.25); }
+    .marker-swatch { width: 16px; height: 16px; display: grid; place-items: center; border-radius: 4px; border: 1px solid rgba(0,0,0,.22); color: #fff; font-size: 9px; font-weight: 900; line-height: 1; }
     .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .count { color: #5f6b76; font-variant-numeric: tabular-nums; font-size: 12px; }
     .leaflet-tooltip.playback-label { border: 0; border-radius: 4px; background: rgba(23,33,43,.9); color: #fff; font-weight: 700; padding: 2px 6px; box-shadow: 0 2px 8px rgba(0,0,0,.25); }
-    @media (max-width: 900px) { .topbar { left: 12px; grid-template-columns: 1fr; } .controls { grid-template-columns: auto 1fr auto; } .time { grid-column: 1 / -1; text-align: left; } .summary { max-height: 34vh; } }
+    .leaflet-tooltip.marker-label { border: 0; border-radius: 4px; background: rgba(23,33,43,.88); color: #fff; font-weight: 800; padding: 2px 6px; box-shadow: 0 2px 8px rgba(0,0,0,.25); }
+    .static-marker { width: 28px; height: 28px; display: grid; place-items: center; border: 2px solid #fff; border-radius: 50%; color: #fff; font-size: 10px; font-weight: 900; line-height: 1; box-shadow: 0 2px 8px rgba(0,0,0,.38); text-shadow: 0 1px 1px rgba(0,0,0,.45); }
+    .static-marker.hazard { border-radius: 5px; transform: rotate(45deg); }
+    .static-marker.hazard span { transform: rotate(-45deg); }
+    .marker-popup { min-width: 180px; }
+    .marker-popup h2 { margin: 0 0 4px; font-size: 15px; line-height: 1.2; }
+    .marker-popup .folder { color: #5f6b76; font-size: 12px; margin-bottom: 6px; }
+    .marker-popup .desc { color: #17212b; font-size: 13px; line-height: 1.35; white-space: pre-wrap; }
+    @media (max-width: 1100px) { .controls { grid-template-columns: auto minmax(90px,1fr) repeat(3, minmax(88px, 1fr)); } .control-label:last-of-type { grid-column: span 2; } }
+    @media (max-width: 900px) { .topbar { top: 8px; left: 8px; right: 8px; grid-template-columns: 1fr; gap: 8px; } .controls { grid-template-columns: auto minmax(0,1fr) minmax(86px,104px); gap: 8px; padding: 8px; } .control-label { min-width: 0; } .control-label:last-of-type { grid-column: auto; } .time { grid-column: 1 / -1; text-align: left; font-size: 15px; overflow: hidden; text-overflow: ellipsis; } .summary { max-height: 38vh; padding: 10px; } }
+    @media (max-width: 620px) { body { font-size: 14px; } .leaflet-control-zoom { margin-top: 144px !important; } .controls { grid-template-columns: auto minmax(0,1fr); } .controls .control-label { grid-column: span 1; } .control-label select { font-size: 13px; } .summary { max-height: 42vh; } label.track, label.marker-row { min-height: 28px; font-size: 12px; } .name { white-space: normal; line-height: 1.2; } }
   </style>
 </head>
 <body>
@@ -76,7 +92,18 @@ writeFileSync("public/index.html", `<!doctype html>
       <label class="control-label">Range<select id="range"></select></label>
       <div id="time" class="time"></div>
     </div>
-    <aside class="panel summary"><h1>Track Playback</h1><div id="meta" class="meta"></div><div id="trackList" class="track-list"></div></aside>
+    <aside class="panel summary">
+      <h1>Track Playback</h1>
+      <div id="meta" class="meta"></div>
+      <div class="section">
+        <div class="section-title">Tracks</div>
+        <div id="trackList" class="track-list"></div>
+      </div>
+      <div id="markerSection" class="section" hidden>
+        <div class="section-title">Markers<label><input id="markersToggle" type="checkbox" checked> Show</label></div>
+        <div id="markerList" class="marker-list"></div>
+      </div>
+    </aside>
   </div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
@@ -125,7 +152,7 @@ writeFileSync("public/index.html", `<!doctype html>
           throw new Error("The playback server returned a non-JSON response. Try again in a minute.");
         }
         if (!response.ok) throw new Error(data.error || "Could not load map.");
-        loadingText.textContent = "Loaded " + data.tracks.length.toLocaleString() + " tracks. Rendering playback map...";
+        loadingText.textContent = "Loaded " + data.tracks.length.toLocaleString() + " tracks and " + (data.markers || []).length.toLocaleString() + " markers. Rendering playback map...";
         startPlayback(data);
         history.replaceState(null, "", "?map=" + encodeURIComponent(input));
       } catch (err) {
@@ -148,9 +175,12 @@ writeFileSync("public/index.html", `<!doctype html>
       }
       map.fitBounds(L.latLngBounds([data.bounds.minLat, data.bounds.minLng], [data.bounds.maxLat, data.bounds.maxLng]).pad(.08));
       const visible = new Set(data.tracks.map(t => t.id));
+      const markerGroupsVisible = new Set((data.markerGroups || []).map(group => group.name));
       const layers = new Map();
-      const slider = document.getElementById("slider"), playButton = document.getElementById("play"), speed = document.getElementById("speed"), stale = document.getElementById("stale"), mode = document.getElementById("mode"), range = document.getElementById("range"), timeEl = document.getElementById("time"), metaEl = document.getElementById("meta"), trackList = document.getElementById("trackList");
+      const markerLayers = new Map();
+      const slider = document.getElementById("slider"), playButton = document.getElementById("play"), speed = document.getElementById("speed"), stale = document.getElementById("stale"), mode = document.getElementById("mode"), range = document.getElementById("range"), timeEl = document.getElementById("time"), metaEl = document.getElementById("meta"), trackList = document.getElementById("trackList"), markerSection = document.getElementById("markerSection"), markerList = document.getElementById("markerList"), markersToggle = document.getElementById("markersToggle");
       trackList.innerHTML = "";
+      markerList.innerHTML = "";
       const windows = buildWindows(data);
       let activeWindow = windows.defaultIndex;
       let viewStart = windows.items[activeWindow].start;
@@ -180,9 +210,44 @@ writeFileSync("public/index.html", `<!doctype html>
         layer.row = row;
         trackList.append(row);
       }
+      setupMarkers(data.markers || []);
       function refreshMeta() {
         const windowItem = windows.items[activeWindow];
-        metaEl.textContent = data.tracks.length.toLocaleString() + " tracks, " + new Date(viewStart).toLocaleString() + " to " + new Date(viewEnd).toLocaleString() + (windowItem.key === "all" ? "" : " (" + windowItem.label + ")");
+        const markerText = (data.markers || []).length ? ", " + data.markers.length.toLocaleString() + " markers" : "";
+        metaEl.textContent = data.tracks.length.toLocaleString() + " tracks" + markerText + ", " + new Date(viewStart).toLocaleString() + " to " + new Date(viewEnd).toLocaleString() + (windowItem.key === "all" ? "" : " (" + windowItem.label + ")");
+      }
+      function setupMarkers(markers) {
+        markerSection.hidden = markers.length === 0;
+        markersToggle.checked = true;
+        for (const group of data.markerGroups || []) {
+          const row = document.createElement("label");
+          row.className = "marker-row";
+          row.title = group.name;
+          const color = markerCategoryColor(group.name);
+          row.innerHTML = '<input type="checkbox" checked><span class="marker-swatch"></span><span class="name"></span><span class="count"></span>';
+          row.querySelector(".marker-swatch").style.background = color;
+          row.querySelector(".marker-swatch").textContent = markerCategoryShort(group.name);
+          row.querySelector(".name").textContent = group.name;
+          row.querySelector(".count").textContent = group.count.toLocaleString();
+          row.querySelector("input").onchange = e => { e.target.checked ? markerGroupsVisible.add(group.name) : markerGroupsVisible.delete(group.name); updateMarkers(); };
+          markerList.append(row);
+        }
+        for (const marker of markers) {
+          const layer = L.marker([marker.lat, marker.lng], { icon: staticMarkerIcon(marker), keyboard: false }).addTo(map);
+          layer.bindPopup(markerPopup(marker));
+          layer.bindTooltip(marker.title, { permanent: marker.labelVisible, direction: "top", offset: [0,-12], className: "marker-label", opacity: .95 });
+          markerLayers.set(marker.id, { marker, layer });
+        }
+        markersToggle.onchange = updateMarkers;
+        updateMarkers();
+      }
+      function updateMarkers() {
+        const masterVisible = markersToggle.checked;
+        for (const { marker, layer } of markerLayers.values()) {
+          const shouldShow = masterVisible && markerGroupsVisible.has(marker.category);
+          if (shouldShow && !map.hasLayer(layer)) layer.addTo(map);
+          if (!shouldShow && map.hasLayer(layer)) layer.removeFrom(map);
+        }
       }
       function pointAt(track, at) {
         const p = track.points;
@@ -249,6 +314,46 @@ writeFileSync("public/index.html", `<!doctype html>
       update(viewStart);
       document.getElementById("loader").hidden = true;
       document.querySelector(".topbar").hidden = false;
+    }
+    function staticMarkerIcon(marker) {
+      const color = validColor(marker.color) || markerCategoryColor(marker.category);
+      const short = markerCategoryShort(marker.category);
+      const hazard = marker.category === "Hazards" ? " hazard" : "";
+      return L.divIcon({
+        className: "",
+        iconSize: [28, 28],
+        iconAnchor: [14, 14],
+        popupAnchor: [0, -14],
+        html: '<div class="static-marker' + hazard + '" style="background:' + color + '"><span>' + escapeHtml(short) + '</span></div>'
+      });
+    }
+    function markerPopup(marker) {
+      const folder = marker.folderTitle && marker.folderTitle !== marker.category ? marker.category + " / " + marker.folderTitle : marker.category;
+      const desc = marker.description ? '<div class="desc">' + escapeHtml(marker.description) + '</div>' : "";
+      return '<div class="marker-popup"><h2>' + escapeHtml(marker.title) + '</h2><div class="folder">' + escapeHtml(folder) + '</div>' + desc + '</div>';
+    }
+    function markerCategoryColor(category) {
+      if (category === "Hazards") return "#d21f1f";
+      if (category === "Rest Stops") return "#0f7b4f";
+      if (category === "Checkpoints") return "#111827";
+      if (category === "Services") return "#6a1b9a";
+      if (category === "HQ") return "#0b6f6a";
+      return "#475569";
+    }
+    function markerCategoryShort(category) {
+      if (category === "Hazards") return "!";
+      if (category === "Rest Stops") return "RS";
+      if (category === "Checkpoints") return "CP";
+      if (category === "Services") return "WC";
+      if (category === "HQ") return "HQ";
+      return "M";
+    }
+    function validColor(value) {
+      const text = String(value || "");
+      return /^#[0-9a-f]{6}$/i.test(text) ? text : "";
+    }
+    function escapeHtml(value) {
+      return String(value || "").replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
     }
     function buildWindows(data) {
       const dayMap = new Map();
