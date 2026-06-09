@@ -2,6 +2,10 @@ const CLASSES = ["Shape", "AppTrack", "FieldTrack", "LiveTrack"];
 const MIN_POINTS = 2;
 
 export default async function handler(request, response) {
+  response.setHeader("Access-Control-Allow-Origin", "*");
+  response.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  response.setHeader("Access-Control-Allow-Headers", "Accept, Content-Type");
+  if (request.method === "OPTIONS") return response.status(204).end();
   try {
     const input = request.query.url || request.query.map || "";
     const mapId = parseMapId(input);

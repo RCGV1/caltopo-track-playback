@@ -81,6 +81,7 @@ writeFileSync("public/index.html", `<!doctype html>
     const map = L.map("map", { preferCanvas: true });
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap contributors" }).addTo(map);
     map.setView([37.35, -122.15], 10);
+    const API_BASE = window.PLAYBACK_API_BASE || "";
     const params = new URLSearchParams(location.search);
     if (params.get("map")) document.getElementById("mapInput").value = params.get("map");
     document.getElementById("load").onclick = loadFromInput;
@@ -107,7 +108,7 @@ writeFileSync("public/index.html", `<!doctype html>
         loadingText.textContent = "Still loading CalTopo tracks... " + seconds + "s";
       }, 5000);
       try {
-        const response = await fetch("/api/playback?url=" + encodeURIComponent(input));
+        const response = await fetch(API_BASE + "/api/playback?url=" + encodeURIComponent(input));
         const text = await response.text();
         let data;
         try {
