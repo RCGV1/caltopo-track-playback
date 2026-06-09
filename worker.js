@@ -165,6 +165,7 @@ const HTML = `<!doctype html>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <style>
     * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
     body { margin: 0; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #17212b; background: #edf1f4; overflow: hidden; }
     #map { position: absolute; inset: 0; }
     .loader { position: absolute; inset: 0; z-index: 800; display: grid; place-items: center; background: #eef3f6; }
