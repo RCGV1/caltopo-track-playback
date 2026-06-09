@@ -19,8 +19,15 @@ writeFileSync("public/index.html", `<!doctype html>
     input, button, select { min-height: 36px; border: 1px solid #d7dde2; border-radius: 6px; background: #fff; color: #17212b; font: inherit; }
     input { min-width: 0; padding: 0 10px; }
     button { padding: 0 14px; font-weight: 700; cursor: pointer; }
+    button:disabled { cursor: wait; opacity: .72; }
     button.primary { border-color: #0b6f6a; background: #0b6f6a; color: #fff; }
     .hint { margin-top: 10px; color: #5f6b76; font-size: 13px; line-height: 1.35; }
+    .loading { display: none; margin-top: 12px; }
+    .loading.active { display: grid; gap: 6px; }
+    .loading-text { color: #41505d; font-size: 13px; }
+    .progress { height: 7px; overflow: hidden; border-radius: 999px; background: #dce4ea; }
+    .progress span { display: block; width: 42%; height: 100%; border-radius: inherit; background: #0b6f6a; animation: loadbar 1.1s ease-in-out infinite; }
+    @keyframes loadbar { 0% { transform: translateX(-110%); } 100% { transform: translateX(250%); } }
     .error { margin-top: 10px; color: #9b1c1c; font-size: 13px; }
     .topbar { position: absolute; top: 12px; left: 54px; right: 12px; z-index: 500; display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 360px); gap: 12px; align-items: start; pointer-events: none; }
     .panel { pointer-events: auto; background: #fff; border: 1px solid rgba(0,0,0,.12); box-shadow: 0 8px 24px rgba(22,32,42,.18); border-radius: 8px; }
@@ -51,6 +58,10 @@ writeFileSync("public/index.html", `<!doctype html>
         <button id="load" class="primary">Load</button>
       </div>
       <div class="hint">Works for CalTopo maps that are public or secret-link accessible. It reads timestamped Shape, AppTrack, FieldTrack, and LiveTrack lines.</div>
+      <div id="loading" class="loading">
+        <div id="loadingText" class="loading-text">Loading CalTopo tracks...</div>
+        <div class="progress"><span></span></div>
+      </div>
       <div id="error" class="error"></div>
     </div>
   </div>
@@ -78,18 +89,42 @@ writeFileSync("public/index.html", `<!doctype html>
     async function loadFromInput() {
       const input = document.getElementById("mapInput").value.trim();
       const error = document.getElementById("error");
+      const loadButton = document.getElementById("load");
+      const loading = document.getElementById("loading");
+      const loadingText = document.getElementById("loadingText");
       error.textContent = "";
-      document.getElementById("load").textContent = "Loading...";
+      if (!input) {
+        error.textContent = "Paste a CalTopo map URL, share URL, or map ID first.";
+        return;
+      }
+      loadButton.textContent = "Loading";
+      loadButton.disabled = true;
+      loading.classList.add("active");
+      loadingText.textContent = "Contacting CalTopo and reading timestamped tracks...";
+      const started = Date.now();
+      const statusTimer = setInterval(() => {
+        const seconds = Math.round((Date.now() - started) / 1000);
+        loadingText.textContent = "Still loading CalTopo tracks... " + seconds + "s";
+      }, 5000);
       try {
         const response = await fetch("/api/playback?url=" + encodeURIComponent(input));
-        const data = await response.json();
+        const text = await response.text();
+        let data;
+        try {
+          data = text ? JSON.parse(text) : {};
+        } catch {
+          throw new Error("The playback server returned a non-JSON response. Try again in a minute.");
+        }
         if (!response.ok) throw new Error(data.error || "Could not load map.");
         startPlayback(data);
         history.replaceState(null, "", "?map=" + encodeURIComponent(input));
       } catch (err) {
         error.textContent = err.message;
       } finally {
-        document.getElementById("load").textContent = "Load";
+        clearInterval(statusTimer);
+        loading.classList.remove("active");
+        loadButton.disabled = false;
+        loadButton.textContent = "Load";
       }
     }
     function startPlayback(data) {
