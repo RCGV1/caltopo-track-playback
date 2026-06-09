@@ -254,18 +254,19 @@ writeFileSync("public/index.html", `<!doctype html>
           markerList.append(row);
         }
         for (const marker of markers) {
-          const layer = L.marker([marker.lat, marker.lng], { icon: staticMarkerIcon(marker), keyboard: false }).addTo(map);
+          const layer = L.marker([marker.lat, marker.lng], { icon: staticMarkerIcon(marker), keyboard: false });
           layer.bindPopup(markerPopup(marker));
-          layer.bindTooltip(marker.title, { permanent: marker.labelVisible, direction: "top", offset: [0,-12], className: "marker-label", opacity: .95 });
+          layer.bindTooltip(marker.title, { permanent: false, direction: "top", offset: [0,-12], className: "marker-label", opacity: .95 });
           markerLayers.set(marker.id, { marker, layer });
         }
         markersToggle.onchange = updateMarkers;
-        updateMarkers();
+        updateMarkers(current);
       }
-      function updateMarkers() {
+      function updateMarkers(at = current) {
         const masterVisible = markersToggle.checked;
         for (const { marker, layer } of markerLayers.values()) {
-          const shouldShow = masterVisible && markerGroupsVisible.has(marker.category);
+          const markerHasAppeared = !Number.isFinite(marker.time) || marker.time <= at;
+          const shouldShow = masterVisible && markerGroupsVisible.has(marker.category) && markerHasAppeared;
           if (shouldShow && !map.hasLayer(layer)) layer.addTo(map);
           if (!shouldShow && map.hasLayer(layer)) layer.removeFrom(map);
         }
@@ -313,6 +314,7 @@ writeFileSync("public/index.html", `<!doctype html>
           layer.marker.setIcon(markerIcon(track, opacity, heading(track, current)));
           opacity > .45 ? layer.marker.openTooltip() : layer.marker.closeTooltip();
         }
+        updateMarkers(current);
       }
       function frame(ts) { if (!playing) return; if (previousFrame == null) previousFrame = ts; const elapsed = ts - previousFrame; previousFrame = ts; const next = current + elapsed * Number(speed.value); if (next >= viewEnd) { playing = false; playButton.textContent = "Play"; update(viewEnd); return; } update(next); requestAnimationFrame(frame); }
       playButton.onclick = () => { playing = !playing; playButton.textContent = playing ? "Pause" : "Play"; previousFrame = null; if (playing) { if (current >= viewEnd) update(viewStart); requestAnimationFrame(frame); } };
