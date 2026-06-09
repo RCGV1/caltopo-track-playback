@@ -32,7 +32,7 @@ writeFileSync("public/index.html", `<!doctype html>
     .error { margin-top: 10px; color: #9b1c1c; font-size: 13px; }
     .topbar { position: absolute; top: 12px; left: 54px; right: 12px; z-index: 500; display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 360px); gap: 12px; align-items: start; pointer-events: none; }
     .panel { pointer-events: auto; background: #fff; border: 1px solid rgba(0,0,0,.12); box-shadow: 0 8px 24px rgba(22,32,42,.18); border-radius: 8px; }
-    .controls { min-width: 0; min-height: 56px; padding: 10px 12px; display: grid; grid-template-columns: auto minmax(120px,1fr) minmax(92px,116px) minmax(92px,116px) minmax(92px,116px); gap: 10px; align-items: center; }
+    .controls { min-width: 0; min-height: 56px; padding: 10px 12px; display: grid; grid-template-columns: auto minmax(120px,1fr) minmax(92px,116px) minmax(92px,116px) minmax(92px,116px) minmax(140px,190px); gap: 10px; align-items: center; }
     input[type=range] { width: 100%; accent-color: #0b6f6a; }
     .control-label { display: grid; gap: 3px; color: #5f6b76; font-size: 11px; line-height: 1; }
     .control-label select { width: 100%; min-width: 0; font-size: 14px; }
@@ -73,6 +73,7 @@ writeFileSync("public/index.html", `<!doctype html>
       <label class="control-label">Speed<select id="speed"><option value="60">60x</option><option value="180" selected>180x</option><option value="600">600x</option><option value="1800">1800x</option><option value="3600">3600x</option></select></label>
       <label class="control-label">Stale<select id="stale"><option value="0">Never</option><option value="300000">5 min</option><option value="600000" selected>10 min</option><option value="1200000">20 min</option><option value="1800000">30 min</option></select></label>
       <label class="control-label">View<select id="mode"><option value="trail" selected>Trails</option><option value="position">Positions</option></select></label>
+      <label class="control-label">Range<select id="range"></select></label>
       <div id="time" class="time"></div>
     </div>
     <aside class="panel summary"><h1>Track Playback</h1><div id="meta" class="meta"></div><div id="trackList" class="track-list"></div></aside>
@@ -148,10 +149,22 @@ writeFileSync("public/index.html", `<!doctype html>
       map.fitBounds(L.latLngBounds([data.bounds.minLat, data.bounds.minLng], [data.bounds.maxLat, data.bounds.maxLng]).pad(.08));
       const visible = new Set(data.tracks.map(t => t.id));
       const layers = new Map();
-      const slider = document.getElementById("slider"), playButton = document.getElementById("play"), speed = document.getElementById("speed"), stale = document.getElementById("stale"), mode = document.getElementById("mode"), timeEl = document.getElementById("time"), metaEl = document.getElementById("meta"), trackList = document.getElementById("trackList");
+      const slider = document.getElementById("slider"), playButton = document.getElementById("play"), speed = document.getElementById("speed"), stale = document.getElementById("stale"), mode = document.getElementById("mode"), range = document.getElementById("range"), timeEl = document.getElementById("time"), metaEl = document.getElementById("meta"), trackList = document.getElementById("trackList");
       trackList.innerHTML = "";
-      const duration = data.end - data.start;
+      const windows = buildWindows(data);
+      let activeWindow = windows.defaultIndex;
+      let viewStart = windows.items[activeWindow].start;
+      let viewEnd = windows.items[activeWindow].end;
+      let duration = Math.max(1, viewEnd - viewStart);
       let current = data.start, playing = false, previousFrame = null;
+      range.innerHTML = "";
+      windows.items.forEach((windowItem, index) => {
+        const option = document.createElement("option");
+        option.value = String(index);
+        option.textContent = windowItem.label;
+        range.append(option);
+      });
+      range.value = String(activeWindow);
       for (const track of data.tracks) {
         const layer = { line: L.polyline([], { color: track.color, weight: 3, opacity: .78 }).addTo(map), marker: L.marker([track.points[0].lat, track.points[0].lng], { icon: markerIcon(track, 1, 0), keyboard: false }).addTo(map) };
         layer.marker.bindTooltip(track.title, { permanent: true, direction: "top", offset: [0,-7], className: "playback-label", opacity: .95 });
@@ -166,7 +179,10 @@ writeFileSync("public/index.html", `<!doctype html>
         row.querySelector("input").onchange = e => { e.target.checked ? visible.add(track.id) : visible.delete(track.id); update(current); };
         trackList.append(row);
       }
-      metaEl.textContent = data.tracks.length.toLocaleString() + " tracks, " + new Date(data.start).toLocaleString() + " to " + new Date(data.end).toLocaleString();
+      function refreshMeta() {
+        const windowItem = windows.items[activeWindow];
+        metaEl.textContent = data.tracks.length.toLocaleString() + " tracks, " + new Date(viewStart).toLocaleString() + " to " + new Date(viewEnd).toLocaleString() + (windowItem.key === "all" ? "" : " (" + windowItem.label + ")");
+      }
       function pointAt(track, at) {
         const p = track.points;
         if (at < p[0].time) return { previous: null, current: null, next: p[0] };
@@ -179,16 +195,18 @@ writeFileSync("public/index.html", `<!doctype html>
         return { previous: left, current: { lat: left.lat + (right.lat - left.lat) * r, lng: left.lng + (right.lng - left.lng) * r, time: at }, next: right };
       }
       const interp = (track, at) => pointAt(track, at).current;
+      function lowerBound(points, at) { let low = 0, high = points.length; while (low < high) { const mid = (low + high) >> 1; if (points[mid].time < at) low = mid + 1; else high = mid; } return low; }
+      function hasWindowPoint(track) { const index = lowerBound(track.points, viewStart); return index < track.points.length && track.points[index].time <= viewEnd; }
       const dist = (a,b) => { const R=6371000, p1=a.lat*Math.PI/180, p2=b.lat*Math.PI/180, d1=(b.lat-a.lat)*Math.PI/180, d2=(b.lng-a.lng)*Math.PI/180, x=Math.sin(d1/2)**2+Math.cos(p1)*Math.cos(p2)*Math.sin(d2/2)**2; return R*2*Math.atan2(Math.sqrt(x), Math.sqrt(1-x)); };
       function heading(track, at) { const {previous,current,next}=pointAt(track, at); if (!current) return null; const from=previous||current, to=previous?current:next; if (!to) return null; const seconds=Math.max(1, Math.abs((to.time||at)-(from.time||at))/1000), meters=dist(from,to); if (meters < 8 || meters/seconds < .5) return null; const a=from.lat*Math.PI/180, b=to.lat*Math.PI/180, d=(to.lng-from.lng)*Math.PI/180, y=Math.sin(d)*Math.cos(b), x=Math.cos(a)*Math.sin(b)-Math.sin(a)*Math.cos(b)*Math.cos(d); return (Math.atan2(y,x)*180/Math.PI+360)%360; }
       function markerIcon(track, opacity, h) { if (!Number.isFinite(h)) return L.divIcon({ className:"", iconSize:[18,18], iconAnchor:[9,9], html:'<div style="width:18px;height:18px;opacity:'+opacity+'"><svg width="18" height="18" viewBox="0 0 18 18"><circle cx="9" cy="9" r="6" fill="'+track.color+'" stroke="#111" stroke-width="1.4"/></svg></div>' }); return L.divIcon({ className:"", iconSize:[24,24], iconAnchor:[12,12], html:'<div style="width:24px;height:24px;opacity:'+opacity+';transform:rotate('+h+'deg)"><svg width="24" height="24" viewBox="0 0 24 24"><path d="M12 2 19 21 12 17 5 21Z" fill="'+track.color+'" stroke="#111" stroke-width="1.4"/></svg></div>' }); }
-      function pointsUntil(track, at) { const out=[]; for (const point of track.points) { if (point.time <= at) out.push([point.lat, point.lng]); else break; } const p=interp(track, at); if (p) out.push([p.lat,p.lng]); return out; }
+      function pointsUntil(track, at) { const out=[]; for (const point of track.points) { if (point.time < viewStart) continue; if (point.time <= at) out.push([point.lat, point.lng]); else break; } const p=interp(track, at); if (p && at >= viewStart) out.push([p.lat,p.lng]); return out; }
       function update(at) {
-        current = Math.max(data.start, Math.min(data.end, at));
-        slider.value = duration > 0 ? Math.round(((current - data.start) / duration) * 1000) : 0;
+        current = Math.max(viewStart, Math.min(viewEnd, at));
+        slider.value = duration > 0 ? Math.round(((current - viewStart) / duration) * 1000) : 0;
         timeEl.textContent = new Date(current).toLocaleString();
         for (const track of data.tracks) {
-          const layer = layers.get(track.id), point = visible.has(track.id) ? interp(track, current) : null, staleMs = Number(stale.value), age = point ? current - point.time : Infinity, fadeStart = staleMs * .7, opacity = staleMs > 0 && age > fadeStart ? Math.max(0, 1 - ((age - fadeStart) / Math.max(1, staleMs - fadeStart))) : 1;
+          const layer = layers.get(track.id), point = visible.has(track.id) && hasWindowPoint(track) ? interp(track, current) : null, staleMs = Number(stale.value), age = point ? current - point.time : Infinity, fadeStart = staleMs * .7, opacity = staleMs > 0 && age > fadeStart ? Math.max(0, 1 - ((age - fadeStart) / Math.max(1, staleMs - fadeStart))) : 1;
           if (!point || opacity <= 0) { layer.line.setLatLngs([]); layer.marker.setOpacity(0); layer.marker.closeTooltip(); continue; }
           layer.line.setLatLngs(mode.value === "trail" ? pointsUntil(track, current) : []);
           layer.line.setStyle({ opacity: .78 * opacity });
@@ -198,14 +216,54 @@ writeFileSync("public/index.html", `<!doctype html>
           opacity > .45 ? layer.marker.openTooltip() : layer.marker.closeTooltip();
         }
       }
-      function frame(ts) { if (!playing) return; if (previousFrame == null) previousFrame = ts; const elapsed = ts - previousFrame; previousFrame = ts; const next = current + elapsed * Number(speed.value); if (next >= data.end) { playing = false; playButton.textContent = "Play"; update(data.end); return; } update(next); requestAnimationFrame(frame); }
-      playButton.onclick = () => { playing = !playing; playButton.textContent = playing ? "Pause" : "Play"; previousFrame = null; if (playing) { if (current >= data.end) update(data.start); requestAnimationFrame(frame); } };
-      slider.oninput = () => update(data.start + duration * (Number(slider.value) / 1000));
+      function frame(ts) { if (!playing) return; if (previousFrame == null) previousFrame = ts; const elapsed = ts - previousFrame; previousFrame = ts; const next = current + elapsed * Number(speed.value); if (next >= viewEnd) { playing = false; playButton.textContent = "Play"; update(viewEnd); return; } update(next); requestAnimationFrame(frame); }
+      playButton.onclick = () => { playing = !playing; playButton.textContent = playing ? "Pause" : "Play"; previousFrame = null; if (playing) { if (current >= viewEnd) update(viewStart); requestAnimationFrame(frame); } };
+      slider.oninput = () => update(viewStart + duration * (Number(slider.value) / 1000));
       stale.onchange = () => update(current);
       mode.onchange = () => update(current);
-      update(data.start);
+      range.onchange = () => {
+        activeWindow = Number(range.value);
+        viewStart = windows.items[activeWindow].start;
+        viewEnd = windows.items[activeWindow].end;
+        duration = Math.max(1, viewEnd - viewStart);
+        playing = false;
+        playButton.textContent = "Play";
+        refreshMeta();
+        update(viewStart);
+      };
+      refreshMeta();
+      update(viewStart);
       document.getElementById("loader").hidden = true;
       document.querySelector(".topbar").hidden = false;
+    }
+    function buildWindows(data) {
+      const dayMap = new Map();
+      for (const track of data.tracks) {
+        const seen = new Set();
+        for (const point of track.points) {
+          const date = new Date(point.time);
+          const key = date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0") + "-" + String(date.getDate()).padStart(2, "0");
+          let item = dayMap.get(key);
+          if (!item) {
+            const startDate = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+            item = { key, start: startDate, end: startDate + 86400000 - 1, points: 0, tracks: 0, seen };
+            dayMap.set(key, item);
+          }
+          item.points += 1;
+          if (!item.seen.has(track.id)) { item.seen.add(track.id); item.tracks += 1; }
+        }
+      }
+      const days = [...dayMap.values()].filter(item => item.points >= 2).sort((a, b) => b.start - a.start);
+      const items = [{ key: "all", label: "All time", start: data.start, end: data.end, points: data.tracks.reduce((sum, track) => sum + track.points.length, 0), tracks: data.tracks.length }];
+      for (const day of days) {
+        items.push({ key: day.key, label: new Date(day.start).toLocaleDateString() + " (" + day.tracks + " tracks)", start: day.start, end: day.end, points: day.points, tracks: day.tracks });
+      }
+      let defaultIndex = 0;
+      if (data.end - data.start > 7 * 86400000 && days.length > 0) {
+        const densest = days.reduce((best, day) => day.points > best.points ? day : best, days[0]);
+        defaultIndex = items.findIndex(item => item.key === densest.key);
+      }
+      return { items, defaultIndex: Math.max(0, defaultIndex) };
     }
   </script>
 </body>
