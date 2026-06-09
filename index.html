@@ -50,10 +50,10 @@
   <div id="loader" class="loader">
     <div class="load-card">
       <h1>CalTopo Playback Tool</h1>
-      <div class="form">
+      <form id="loadForm" class="form">
         <input id="mapInput" placeholder="Paste any CalTopo map share link or map ID">
         <button id="load" class="primary">Load</button>
-      </div>
+      </form>
       <div class="hint">Works for CalTopo maps that are public or secret-link accessible. It reads timestamped Shape, AppTrack, FieldTrack, and LiveTrack lines.</div>
       <div id="loading" class="loading">
         <div id="loadingText" class="loading-text">Loading CalTopo tracks...</div>
@@ -81,9 +81,15 @@
     const API_BASE = "https://caltopo-track-playback.vercel.app";
     const params = new URLSearchParams(location.search);
     if (params.get("map")) document.getElementById("mapInput").value = params.get("map");
-    document.getElementById("load").onclick = loadFromInput;
+    document.getElementById("loadForm").addEventListener("submit", event => { event.preventDefault(); loadFromInput(); });
+    document.getElementById("load").onclick = event => { event.preventDefault(); loadFromInput(); };
     document.getElementById("mapInput").addEventListener("keydown", event => { if (event.key === "Enter") loadFromInput(); });
-    if (params.get("map")) loadFromInput();
+    window.loadFromInput = loadFromInput;
+    if (params.get("map")) {
+      document.getElementById("loading").classList.add("active");
+      document.getElementById("loadingText").textContent = "Auto-loading CalTopo tracks...";
+      setTimeout(loadFromInput, 250);
+    }
     async function loadFromInput() {
       const input = document.getElementById("mapInput").value.trim();
       const error = document.getElementById("error");
