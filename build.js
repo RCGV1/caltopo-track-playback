@@ -22,6 +22,7 @@ writeFileSync("public/index.html", `<!doctype html>
     button { padding: 0 14px; font-weight: 700; cursor: pointer; }
     button:disabled { cursor: wait; opacity: .72; }
     button.primary { border-color: #0b6f6a; background: #0b6f6a; color: #fff; }
+    button.secondary { border-color: #c9d2da; background: #f8fafb; color: #17212b; }
     .hint { margin-top: 10px; color: #5f6b76; font-size: 13px; line-height: 1.35; }
     .loading { display: none; margin-top: 12px; }
     .loading.active { display: grid; gap: 6px; }
@@ -38,6 +39,8 @@ writeFileSync("public/index.html", `<!doctype html>
     .control-label select { width: 100%; min-width: 0; font-size: 14px; }
     .time { min-width: 178px; grid-column: 1 / -1; text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; font-size: 17px; white-space: nowrap; }
     .summary { max-height: calc(100vh - 24px); overflow: auto; padding: 12px; }
+    .summary-head { display: flex; align-items: start; justify-content: space-between; gap: 10px; }
+    .summary-head button { display: none; min-height: 30px; padding: 0 10px; }
     .summary h1 { margin: 0 0 4px; font-size: 17px; line-height: 1.2; }
     .meta { color: #5f6b76; font-size: 12px; line-height: 1.35; margin-bottom: 10px; }
     .section { display: grid; gap: 6px; margin-top: 12px; }
@@ -62,7 +65,25 @@ writeFileSync("public/index.html", `<!doctype html>
     .marker-popup .desc { color: #17212b; font-size: 13px; line-height: 1.35; white-space: pre-wrap; }
     @media (max-width: 1100px) { .controls { grid-template-columns: auto minmax(90px,1fr) repeat(3, minmax(88px, 1fr)); } .control-label:last-of-type { grid-column: span 2; } }
     @media (max-width: 900px) { .topbar { top: 8px; left: 8px; right: 8px; grid-template-columns: 1fr; gap: 8px; } .controls { grid-template-columns: auto minmax(0,1fr) minmax(86px,104px); gap: 8px; padding: 8px; } .control-label { min-width: 0; } .control-label:last-of-type { grid-column: auto; } .time { grid-column: 1 / -1; text-align: left; font-size: 15px; overflow: hidden; text-overflow: ellipsis; } .summary { max-height: 38vh; padding: 10px; } }
-    @media (max-width: 620px) { body { font-size: 14px; } .leaflet-control-zoom { margin-top: 144px !important; } .controls { grid-template-columns: auto minmax(0,1fr); } .controls .control-label { grid-column: span 1; } .control-label select { font-size: 13px; } .summary { max-height: 42vh; } label.track, label.marker-row { min-height: 28px; font-size: 12px; } .name { white-space: normal; line-height: 1.2; } }
+    @media (max-width: 620px) {
+      body { font-size: 14px; }
+      .leaflet-control-zoom { margin-top: 132px !important; }
+      .topbar { bottom: 8px; align-content: start; }
+      .controls { grid-template-columns: auto minmax(0,1fr); gap: 7px; }
+      .controls .control-label { grid-column: span 1; }
+      .control-label select { min-height: 32px; font-size: 13px; }
+      #play { min-width: 72px; }
+      .time { font-size: 13px; }
+      .summary { position: fixed; left: 8px; right: 8px; bottom: 8px; max-height: min(58vh, 430px); padding: 10px; transition: max-height .18s ease, padding .18s ease; }
+      .summary-head { align-items: center; }
+      .summary-head button { display: inline-flex; align-items: center; justify-content: center; }
+      body.mobile-list-collapsed .summary { max-height: 48px; overflow: hidden; padding-bottom: 8px; }
+      body.mobile-list-collapsed .summary .meta,
+      body.mobile-list-collapsed .summary .section { display: none; }
+      body.mobile-list-collapsed .summary h1 { margin-bottom: 0; }
+      label.track, label.marker-row { min-height: 28px; font-size: 12px; }
+      .name { white-space: normal; line-height: 1.2; }
+    }
   </style>
 </head>
 <body>
@@ -93,7 +114,7 @@ writeFileSync("public/index.html", `<!doctype html>
       <div id="time" class="time"></div>
     </div>
     <aside class="panel summary">
-      <h1>Track Playback</h1>
+      <div class="summary-head"><h1>Track Playback</h1><button id="listToggle" class="secondary">List</button></div>
       <div id="meta" class="meta"></div>
       <div class="section">
         <div class="section-title">Tracks</div>
@@ -178,7 +199,7 @@ writeFileSync("public/index.html", `<!doctype html>
       const markerGroupsVisible = new Set((data.markerGroups || []).map(group => group.name));
       const layers = new Map();
       const markerLayers = new Map();
-      const slider = document.getElementById("slider"), playButton = document.getElementById("play"), speed = document.getElementById("speed"), stale = document.getElementById("stale"), mode = document.getElementById("mode"), range = document.getElementById("range"), timeEl = document.getElementById("time"), metaEl = document.getElementById("meta"), trackList = document.getElementById("trackList"), markerSection = document.getElementById("markerSection"), markerList = document.getElementById("markerList"), markersToggle = document.getElementById("markersToggle");
+      const slider = document.getElementById("slider"), playButton = document.getElementById("play"), speed = document.getElementById("speed"), stale = document.getElementById("stale"), mode = document.getElementById("mode"), range = document.getElementById("range"), timeEl = document.getElementById("time"), metaEl = document.getElementById("meta"), trackList = document.getElementById("trackList"), markerSection = document.getElementById("markerSection"), markerList = document.getElementById("markerList"), markersToggle = document.getElementById("markersToggle"), listToggle = document.getElementById("listToggle");
       trackList.innerHTML = "";
       markerList.innerHTML = "";
       const windows = buildWindows(data);
@@ -298,6 +319,13 @@ writeFileSync("public/index.html", `<!doctype html>
       slider.oninput = () => update(viewStart + duration * (Number(slider.value) / 1000));
       stale.onchange = () => update(current);
       mode.onchange = () => update(current);
+      function setListCollapsed(collapsed) {
+        document.body.classList.toggle("mobile-list-collapsed", collapsed);
+        listToggle.textContent = collapsed ? "List" : "Hide";
+        listToggle.setAttribute("aria-expanded", String(!collapsed));
+        setTimeout(() => map.invalidateSize(), 210);
+      }
+      listToggle.onclick = () => setListCollapsed(!document.body.classList.contains("mobile-list-collapsed"));
       range.onchange = () => {
         activeWindow = Number(range.value);
         viewStart = windows.items[activeWindow].start;
@@ -312,6 +340,7 @@ writeFileSync("public/index.html", `<!doctype html>
       refreshMeta();
       fitWindowBounds();
       update(viewStart);
+      setListCollapsed(window.matchMedia("(max-width: 620px)").matches);
       document.getElementById("loader").hidden = true;
       document.querySelector(".topbar").hidden = false;
     }
