@@ -6,7 +6,7 @@ writeFileSync("public/index.html", `<!doctype html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>CalTopo Track Playback</title>
+  <title>CalTopo Playback Tool</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <style>
     * { box-sizing: border-box; }
@@ -45,9 +45,9 @@ writeFileSync("public/index.html", `<!doctype html>
   <div id="map"></div>
   <div id="loader" class="loader">
     <div class="load-card">
-      <h1>CalTopo Track Playback</h1>
+      <h1>CalTopo Playback Tool</h1>
       <div class="form">
-        <input id="mapInput" placeholder="Paste a CalTopo map share link or map ID">
+        <input id="mapInput" placeholder="Paste any CalTopo map share link or map ID">
         <button id="load" class="primary">Load</button>
       </div>
       <div class="hint">Works for CalTopo maps that are public or secret-link accessible. It reads timestamped Shape, AppTrack, FieldTrack, and LiveTrack lines.</div>
