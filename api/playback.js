@@ -2,25 +2,44 @@ const CLASSES = ["Shape", "AppTrack", "FieldTrack", "LiveTrack"];
 const MARKER_CLASSES = ["Marker"];
 const FOLDER_CLASSES = ["Folder"];
 const MIN_POINTS = 2;
+const FETCH_CONCURRENCY = 8;
+
+export class PlaybackError extends Error {
+  constructor(message, status = 500) {
+    super(message);
+    this.status = status;
+  }
+}
 
 export default async function handler(request, response) {
   response.setHeader("Access-Control-Allow-Origin", "*");
   response.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
   response.setHeader("Access-Control-Allow-Headers", "Accept, Content-Type");
+  response.setHeader("Cache-Control", "no-store, max-age=0");
+  response.setHeader("CDN-Cache-Control", "no-store");
   if (request.method === "OPTIONS") return response.status(204).end();
   try {
-    const input = request.query.url || request.query.map || "";
-    const mapId = parseMapId(input);
-    if (!mapId) return response.status(400).json({ error: "Paste a CalTopo map URL or map ID." });
-    const data = await exportMap(mapId);
-    response.setHeader("Cache-Control", "no-store, max-age=0");
+    const data = await getPlayback(request.query.url || request.query.map || "");
     return response.status(200).json(data);
   } catch (error) {
-    return response.status(500).json({ error: error.message });
+    return response.status(error instanceof PlaybackError ? error.status : 500).json({
+      error: errorMessage(error)
+    });
   }
 }
 
-function parseMapId(input) {
+export async function getPlayback(input) {
+  const mapId = parseMapId(input);
+  if (!mapId) throw new PlaybackError("Paste a CalTopo map URL or map ID.", 400);
+  return exportMap(mapId);
+}
+
+export function errorMessage(error) {
+  if (error instanceof PlaybackError) return error.message;
+  return "CalTopo could not load this map. Verify the map link is public or share-link accessible and try again.";
+}
+
+export function parseMapId(input) {
   const value = String(input).trim();
   if (/^[A-Za-z0-9]{5,12}$/.test(value)) return value;
   try {
@@ -33,41 +52,35 @@ function parseMapId(input) {
 }
 
 async function exportMap(mapId) {
-  const summary = await fetchJson(`https://caltopo.com/api/v1/map/${mapId}/since/0`);
+  const summary = await fetchJson(`https://caltopo.com/api/v1/map/${mapId}/since/0`, "map summary");
   const idsByClass = summary?.result?.ids || {};
   const tracks = [];
   const folders = new Map();
   const markers = [];
-  const scanned = {};
+  const scanned = Object.fromEntries(
+    [...FOLDER_CLASSES, ...CLASSES, ...MARKER_CLASSES].map((className) => [
+      className,
+      Array.isArray(idsByClass[className]) ? idsByClass[className].length : 0
+    ])
+  );
 
-  for (const className of FOLDER_CLASSES) {
-    const ids = Array.isArray(idsByClass[className]) ? idsByClass[className] : [];
-    scanned[className] = ids.length;
-    for (const id of ids) {
-      const body = await fetchJson(`https://caltopo.com/api/v1/map/${mapId}/${className}/${id}`);
-      const folder = normalizeFolder(body?.result, id);
-      if (folder) folders.set(id, folder);
-    }
+  const folderFeatures = await fetchMapObjects(mapId, idsByClass, FOLDER_CLASSES);
+  for (const { feature, id } of folderFeatures) {
+    const folder = normalizeFolder(feature, id);
+    if (folder) folders.set(id, folder);
   }
 
-  for (const className of CLASSES) {
-    const ids = Array.isArray(idsByClass[className]) ? idsByClass[className] : [];
-    scanned[className] = ids.length;
-    for (const id of ids) {
-      const body = await fetchJson(`https://caltopo.com/api/v1/map/${mapId}/${className}/${id}`);
-      const track = normalizeTrack(body?.result, className, id);
-      if (track) tracks.push(track);
-    }
+  const [trackFeatures, markerFeatures] = await Promise.all([
+    fetchMapObjects(mapId, idsByClass, CLASSES),
+    fetchMapObjects(mapId, idsByClass, MARKER_CLASSES)
+  ]);
+  for (const { feature, className, id } of trackFeatures) {
+    const track = normalizeTrack(feature, className, id);
+    if (track) tracks.push(track);
   }
-
-  for (const className of MARKER_CLASSES) {
-    const ids = Array.isArray(idsByClass[className]) ? idsByClass[className] : [];
-    scanned[className] = ids.length;
-    for (const id of ids) {
-      const body = await fetchJson(`https://caltopo.com/api/v1/map/${mapId}/${className}/${id}`);
-      const marker = normalizeMarker(body?.result, className, id, folders);
-      if (marker) markers.push(marker);
-    }
+  for (const { feature, className, id } of markerFeatures) {
+    const marker = normalizeMarker(feature, className, id, folders);
+    if (marker) markers.push(marker);
   }
 
   tracks.sort((left, right) => left.start - right.start || left.title.localeCompare(right.title));
@@ -88,6 +101,12 @@ async function exportMap(mapId) {
     },
     { minLat: Infinity, maxLat: -Infinity, minLng: Infinity, maxLng: -Infinity }
   );
+  for (const marker of markers) {
+    bounds.minLat = Math.min(bounds.minLat, marker.lat);
+    bounds.maxLat = Math.max(bounds.maxLat, marker.lat);
+    bounds.minLng = Math.min(bounds.minLng, marker.lng);
+    bounds.maxLng = Math.max(bounds.maxLng, marker.lng);
+  }
 
   return {
     mapId,
@@ -97,28 +116,61 @@ async function exportMap(mapId) {
     end,
     bounds,
     tracks,
+    folders: [...folders.values()].sort((left, right) => left.title.localeCompare(right.title)),
     markers,
     markerGroups: markerGroups(markers)
   };
 }
 
-async function fetchJson(url) {
-  const response = await fetch(url);
-  const text = await response.text();
-  let body = null;
+async function fetchMapObjects(mapId, idsByClass, classNames) {
+  const objects = classNames.flatMap((className) =>
+    (Array.isArray(idsByClass[className]) ? idsByClass[className] : []).map((id) => ({
+      className,
+      id: String(id)
+    }))
+  );
+  return mapWithConcurrency(objects, FETCH_CONCURRENCY, async ({ className, id }) => ({
+    className,
+    id,
+    feature: (await fetchJson(
+      `https://caltopo.com/api/v1/map/${mapId}/${className}/${encodeURIComponent(id)}`,
+      `${className} ${id}`
+    ))?.result
+  }));
+}
+
+async function mapWithConcurrency(items, limit, mapper) {
+  const results = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const index = next++;
+      results[index] = await mapper(items[index]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(items.length, limit) }, worker));
+  return results;
+}
+
+async function fetchJson(url, description) {
+  let response;
   try {
-    body = text ? JSON.parse(text) : null;
+    response = await fetch(url, { headers: { Accept: "application/json" } });
   } catch {
-    body = text;
+    throw new PlaybackError(`CalTopo could not be reached while loading ${description}.`, 502);
   }
+  const text = await response.text();
   if (!response.ok) {
-    const detail =
-      typeof body === "object" && body?.message
-        ? body.message
-        : String(text).slice(0, 180);
-    throw new Error(`${url} returned HTTP ${response.status}: ${detail}`);
+    const message = response.status === 401 || response.status === 403
+      ? "CalTopo denied access to this map. Verify the shared map link."
+      : `CalTopo could not load ${description} (HTTP ${response.status}).`;
+    throw new PlaybackError(message, response.status >= 400 && response.status < 500 ? response.status : 502);
   }
-  return body;
+  try {
+    return text ? JSON.parse(text) : null;
+  } catch {
+    throw new PlaybackError(`CalTopo returned an invalid response while loading ${description}.`, 502);
+  }
 }
 
 function normalizeTrack(feature, className, id) {
@@ -137,7 +189,7 @@ function normalizeTrack(feature, className, id) {
     className,
     title: properties.title || properties.name || properties.deviceId || `${className} ${id}`,
     deviceId: properties.deviceId || "",
-    color: properties.stroke || properties.color || colorFor(id),
+    color: normalizeColor(properties.stroke || properties.color) || colorFor(id),
     pointCount: points.length,
     start: first.time,
     end: last.time,
@@ -159,7 +211,7 @@ function normalizeMarker(feature, className, id, folders) {
   const properties = feature?.properties || {};
   if (geometry?.type !== "Point") return null;
   const coord = Array.isArray(geometry.coordinates) ? geometry.coordinates : [];
-  const [lng, lat, ele, time] = coord;
+  const [lng, lat, ele] = coord;
   if (!Number.isFinite(lng) || !Number.isFinite(lat)) return null;
   if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
   const folderId = properties.folderId || "";
@@ -169,6 +221,8 @@ function normalizeMarker(feature, className, id, folders) {
   const symbol = cleanText(properties["marker-symbol"] || properties.symbol || "");
   const color = normalizeColor(properties["marker-color"] || properties.color || "");
   const category = markerCategory({ title, description, symbol, folderTitle: folder?.title || "" });
+  const createdOn = markerCreatedTime(properties);
+  if (!createdOn) return null;
   return {
     id,
     className,
@@ -184,7 +238,7 @@ function normalizeMarker(feature, className, id, folders) {
     lng: Number(lng.toFixed(7)),
     lat: Number(lat.toFixed(7)),
     ele: Number.isFinite(ele) ? Math.round(ele) : null,
-    time: markerCreatedTime(properties)
+    time: createdOn
   };
 }
 
