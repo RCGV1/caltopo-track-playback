@@ -50,7 +50,7 @@ Markers created before the replay window are visible at the start. Markers creat
 
 ## Deploying
 
-This repository is a standalone Vercel app. Import `RCGV1/caltopo-track-playback` into Vercel with the Root Directory set to the repository root (leave it blank). `vercel.json` defines the build command, static output, and API timeout. The production branch is `main`.
+This repository is a standalone Vercel app. Import `RCGV1/caltopo-track-playback` into Vercel with the Root Directory set to the repository root (leave it blank). `vercel.json` defines the build command, static output, and API timeout. The hosted project is connected to this repository: pushes to `main` automatically deploy to production. Vercel GitHub access is limited to this repository.
 
 To deploy from a local checkout:
 
