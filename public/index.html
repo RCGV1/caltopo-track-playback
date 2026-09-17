@@ -53,9 +53,8 @@
     .count { color: #5f6b76; font-variant-numeric: tabular-nums; font-size: 12px; }
     .leaflet-tooltip.playback-label { border: 0; border-radius: 4px; background: rgba(23,33,43,.9); color: #fff; font-weight: 700; padding: 2px 6px; box-shadow: 0 2px 8px rgba(0,0,0,.25); }
     .leaflet-tooltip.marker-label { border: 0; border-radius: 4px; background: rgba(23,33,43,.88); color: #fff; font-weight: 800; padding: 2px 6px; box-shadow: 0 2px 8px rgba(0,0,0,.25); }
-    .static-marker { width: 28px; height: 28px; display: grid; place-items: center; border: 2px solid #fff; border-radius: 50%; color: #fff; font-size: 10px; font-weight: 900; line-height: 1; box-shadow: 0 2px 8px rgba(0,0,0,.38); text-shadow: 0 1px 1px rgba(0,0,0,.45); }
-    .static-marker.hazard { border-radius: 5px; transform: rotate(45deg); }
-    .static-marker.hazard span { transform: rotate(-45deg); }
+    .disclaimer { color: #5f6b76; font-size: 11px; line-height: 1.4; }
+    .summary .disclaimer { margin-top: 12px; }
     .marker-popup { min-width: 180px; }
     .marker-popup h2 { margin: 0 0 4px; font-size: 15px; line-height: 1.2; }
     .marker-popup .folder { color: #5f6b76; font-size: 12px; margin-bottom: 6px; }
@@ -76,6 +75,7 @@
       .summary-head button { display: inline-flex; align-items: center; justify-content: center; }
       body.mobile-list-collapsed .summary { max-height: 48px; overflow: hidden; padding-bottom: 8px; }
       body.mobile-list-collapsed .summary .meta,
+      body.mobile-list-collapsed .summary .disclaimer,
       body.mobile-list-collapsed .summary .section { display: none; }
       body.mobile-list-collapsed .summary h1 { margin-bottom: 0; }
       label.track, label.marker-row { min-height: 28px; font-size: 12px; }
@@ -93,6 +93,7 @@
         <button id="load" class="primary">Load</button>
       </form>
       <div class="hint">Works for CalTopo maps that are public or secret-link accessible. It reads timestamped Shape, AppTrack, FieldTrack, and LiveTrack lines.</div>
+      <p class="disclaimer">Independent tool. Not affiliated with, endorsed by, or sponsored by CalTopo.</p>
       <div id="loading" class="loading">
         <div id="loadingText" class="loading-text">Loading CalTopo tracks...</div>
         <div class="progress"><span></span></div>
@@ -113,6 +114,7 @@
     <aside class="panel summary">
       <div class="summary-head"><h1>Track Playback</h1><button id="listToggle" class="secondary">List</button></div>
       <div id="meta" class="meta"></div>
+      <p class="disclaimer">Independent tool. Not affiliated with, endorsed by, or sponsored by CalTopo.</p>
       <div class="section">
         <div class="section-title">Tracks</div>
         <div id="trackList" class="track-list"></div>
@@ -213,7 +215,7 @@
       let viewStart = windows.items[activeWindow].start;
       let viewEnd = windows.items[activeWindow].end;
       let duration = Math.max(1, viewEnd - viewStart);
-      let current = data.start, playing = false, previousFrame = null;
+      let current = viewStart, playing = false, previousFrame = null;
       range.innerHTML = "";
       windows.items.forEach((windowItem, index) => {
         const option = document.createElement("option");
@@ -261,7 +263,7 @@
           markerList.append(row);
         }
         for (const marker of markers) {
-          const layer = L.marker([marker.lat, marker.lng], { icon: staticMarkerIcon(marker), keyboard: false });
+          const layer = L.marker([marker.lat, marker.lng], { icon: staticMarkerIcon(marker), alt: marker.title, title: marker.title, keyboard: false });
           playbackLayers.push(layer);
           layer.bindPopup(markerPopup(marker));
           layer.bindTooltip(marker.title, { permanent: false, direction: "top", offset: [0,-12], className: "marker-label", opacity: .95 });
@@ -355,15 +357,12 @@
       document.querySelector(".topbar").hidden = false;
     }
     function staticMarkerIcon(marker) {
-      const color = validColor(marker.color) || markerCategoryColor(marker.category);
-      const short = markerCategoryShort(marker.category);
-      const hazard = marker.category === "Hazards" ? " hazard" : "";
-      return L.divIcon({
-        className: "",
-        iconSize: [28, 28],
-        iconAnchor: [14, 14],
-        popupAnchor: [0, -14],
-        html: '<div class="static-marker' + hazard + '" style="background:' + color + '"><span>' + escapeHtml(short) + '</span></div>'
+      return L.icon({
+        iconUrl: marker.iconUrl,
+        iconRetinaUrl: marker.iconRetinaUrl,
+        iconSize: marker.iconSize,
+        iconAnchor: marker.iconAnchor,
+        popupAnchor: [0, -marker.iconSize[1] / 2]
       });
     }
     function markerPopup(marker) {
@@ -404,15 +403,24 @@
           let item = dayMap.get(key);
           if (!item) {
             const startDate = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
-            item = { key, start: startDate, end: startDate + 86400000 - 1, points: 0, tracks: 0, seen: new Set() };
+            item = { key, dayStart: startDate, start: point.time, end: new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1).getTime() - 1, points: 0, tracks: 0, seen: new Set() };
             dayMap.set(key, item);
           }
           item.points += 1;
+          item.start = Math.min(item.start, point.time);
           if (!item.seen.has(trackKey)) { item.seen.add(trackKey); item.tracks += 1; }
         }
       }
+      let firstObject = data.start;
+      for (const marker of data.markers || []) {
+        if (!Number.isFinite(marker.time) || marker.time > data.end) continue;
+        firstObject = Math.min(firstObject, marker.time);
+        for (const day of dayMap.values()) {
+          if (marker.time >= day.dayStart && marker.time <= day.end) day.start = Math.min(day.start, marker.time);
+        }
+      }
       const days = [...dayMap.values()].filter(item => item.points >= 2).sort((a, b) => b.start - a.start);
-      const items = [{ key: "all", label: "All time", start: data.start, end: data.end, points: data.tracks.reduce((sum, track) => sum + track.points.length, 0), tracks: data.tracks.length }];
+      const items = [{ key: "all", label: "All time", start: firstObject, end: data.end, points: data.tracks.reduce((sum, track) => sum + track.points.length, 0), tracks: data.tracks.length }];
       for (const day of days) {
         items.push({ key: day.key, label: new Date(day.start).toLocaleDateString() + " (" + day.tracks + " tracks)", start: day.start, end: day.end, points: day.points, tracks: day.tracks });
       }

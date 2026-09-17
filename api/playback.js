@@ -78,8 +78,9 @@ async function exportMap(mapId) {
     const track = normalizeTrack(feature, className, id);
     if (track) tracks.push(track);
   }
+  const icons = markerFeatures.length ? await loadIconCatalog() : new Map();
   for (const { feature, className, id } of markerFeatures) {
-    const marker = normalizeMarker(feature, className, id, folders);
+    const marker = normalizeMarker(feature, className, id, folders, icons);
     if (marker) markers.push(marker);
   }
 
@@ -206,7 +207,7 @@ function normalizeFolder(feature, id) {
   };
 }
 
-function normalizeMarker(feature, className, id, folders) {
+function normalizeMarker(feature, className, id, folders, icons) {
   const geometry = feature?.geometry;
   const properties = feature?.properties || {};
   if (geometry?.type !== "Point") return null;
@@ -232,14 +233,64 @@ function normalizeMarker(feature, className, id, folders) {
     folderTitle: folder?.title || "",
     category,
     symbol,
-    color: color || colorForMarkerCategory(category),
+    color,
     size: cleanText(properties["marker-size"] || ""),
     labelVisible: Boolean(properties.labelVisible),
     lng: Number(lng.toFixed(7)),
     lat: Number(lat.toFixed(7)),
     ele: Number.isFinite(ele) ? Math.round(ele) : null,
-    time: createdOn
+    time: createdOn,
+    ...markerImage(properties, icons)
   };
+}
+
+let cachedIcons;
+let iconsFetchedAt = 0;
+async function loadIconCatalog() {
+  if (cachedIcons && Date.now() - iconsFetchedAt < 3600000) return cachedIcons;
+  try {
+    const constants = await fetchJson('https://caltopo.com/sideload/constants.json', 'marker styles');
+    cachedIcons = new Map(Object.values(constants.icons || {}).flat().map(icon => [icon.id, icon]));
+    iconsFetchedAt = Date.now();
+  } catch {
+    // A temporary style-catalog failure should not prevent track playback.
+    return cachedIcons || new Map();
+  }
+  return cachedIcons;
+}
+
+function markerImage(properties, icons) {
+  const symbol = cleanText(properties['marker-symbol'] || properties.symbol || 'point');
+  const requestedScale = Number(properties['marker-size']);
+  const scale = Number.isFinite(requestedScale) && requestedScale > 0 ? requestedScale : 1;
+  let baseSize = 0, anchor = [.5, .5];
+  for (const part of symbol.split('$')) {
+    const custom = /^icon-[^-]+-([\d.]+)-([\d.]+)-([\d.]+)-[tf]{2}$/.exec(part);
+    const spec = custom ? { size: Number(custom[1]), anchor: [Number(custom[2]), Number(custom[3])] } : icons.get(part.split(':')[0]);
+    if (spec) {
+      baseSize = Math.max(baseSize, spec.size);
+      anchor = spec.anchor || [.5, .5];
+    }
+  }
+  if (symbol === '/static/images/icons/usgs.png') baseSize = 12;
+  const size = (baseSize || 24) * scale;
+  let iconUrl, iconRetinaUrl;
+  if (/^(https?:\/\/|\/(?!\/))/i.test(symbol)) {
+    iconUrl = new URL(symbol, 'https://caltopo.com').href.replace(/^http:/i, 'https:');
+    iconRetinaUrl = iconUrl;
+  } else {
+    let cfg = symbol;
+    const fill = normalizeColor(properties['marker-fill'] || '');
+    const color = normalizeColor(properties['marker-color'] || properties.color || '');
+    if (fill) cfg += ',' + fill.slice(1);
+    if (color) cfg += ',' + color.slice(1);
+    const rotation = Number(properties['marker-rotation']);
+    if (Number.isFinite(rotation) && rotation !== 0) cfg += '@' + rotation;
+    if (Number.isFinite(requestedScale) && requestedScale > 0) cfg += '#' + scale;
+    iconUrl = 'https://caltopo.com/icon.png?cfg=' + encodeURIComponent(cfg);
+    iconRetinaUrl = 'https://caltopo.com/icon@2x.png?cfg=' + encodeURIComponent(cfg);
+  }
+  return { iconUrl, iconRetinaUrl, iconSize: [size, size], iconAnchor: [size * anchor[0], size * anchor[1]] };
 }
 
 function markerCreatedTime(properties) {

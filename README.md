@@ -4,6 +4,8 @@ Replay timestamped CalTopo tracks and event markers from a public or share-link-
 
 The hosted tool is available at [caltopo-track-playback.vercel.app](https://caltopo-track-playback.vercel.app/).
 
+This is an independent project. It is not affiliated with, endorsed by, or sponsored by CalTopo.
+
 ## Public Demo
 
 [**Try the SAR Academy multi-team playback demo**](https://caltopo-track-playback.vercel.app/?map=https%3A%2F%2Fcaltopo.com%2Fm%2F04GP2VD)
@@ -24,6 +26,8 @@ Map credit: the original public **SAR Academy 2510-2** map and its contributors.
 - Loads CalTopo map links, share links, and raw map IDs.
 - Replays timestamped `Shape`, `AppTrack`, `FieldTrack`, and `LiveTrack` line data.
 - Shows CalTopo markers such as hazards, rest stops, checkpoints, services, and HQ.
+- Preserves CalTopo marker images, colors, fill, rotation, sizes, and anchor points, including custom icons.
+- Starts each replay range at its first recorded object instead of an empty midnight timeline.
 - Replays marker additions using each marker's CalTopo created time.
 - Supports trail playback, position-only playback, stale-track fadeout, range selection, and per-track visibility.
 - Keeps marker labels hover-only by default to reduce clutter.
