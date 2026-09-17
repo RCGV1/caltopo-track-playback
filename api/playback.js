@@ -19,7 +19,7 @@ export default async function handler(request, response) {
   response.setHeader("CDN-Cache-Control", "no-store");
   if (request.method === "OPTIONS") return response.status(204).end();
   try {
-    const data = await getPlayback(request.query.url || request.query.map || "");
+    const data = await getPlayback(request.query.url || request.query.map || request.query.id || "");
     return response.status(200).json(data);
   } catch (error) {
     return response.status(error instanceof PlaybackError ? error.status : 500).json({
@@ -41,7 +41,7 @@ export function errorMessage(error) {
 
 export function parseMapId(input) {
   const value = String(input).trim();
-  if (/^[A-Za-z0-9]{5,12}$/.test(value)) return value;
+  if (/^[A-Za-z0-9]{4,12}$/.test(value)) return value;
   try {
     const url = new URL(value);
     const match = url.pathname.match(/\/m\/([A-Za-z0-9]+)/);
@@ -75,7 +75,7 @@ async function exportMap(mapId) {
     fetchMapObjects(mapId, idsByClass, MARKER_CLASSES)
   ]);
   for (const { feature, className, id } of trackFeatures) {
-    const track = normalizeTrack(feature, className, id);
+    const track = normalizeTrack(feature, className, id, folders);
     if (track) tracks.push(track);
   }
   const icons = markerFeatures.length ? await loadIconCatalog() : new Map();
@@ -83,6 +83,7 @@ async function exportMap(mapId) {
     const marker = normalizeMarker(feature, className, id, folders, icons);
     if (marker) markers.push(marker);
   }
+  await attachMarkerIconData(markers);
 
   tracks.sort((left, right) => left.start - right.start || left.title.localeCompare(right.title));
   markers.sort((left, right) => left.category.localeCompare(right.category) || left.title.localeCompare(right.title));
@@ -174,7 +175,7 @@ async function fetchJson(url, description) {
   }
 }
 
-function normalizeTrack(feature, className, id) {
+function normalizeTrack(feature, className, id, folders) {
   const geometry = feature?.geometry;
   const properties = feature?.properties || {};
   if (geometry?.type !== "LineString") return null;
@@ -185,17 +186,45 @@ function normalizeTrack(feature, className, id) {
   if (points.length < MIN_POINTS) return null;
   const first = points[0];
   const last = points[points.length - 1];
+  const folderId = properties.folderId || "";
+  const folder = folderId && folders ? folders.get(folderId) : null;
+  const distanceMeters = calculateTrackDistance(points);
   return {
     id,
     className,
     title: properties.title || properties.name || properties.deviceId || `${className} ${id}`,
     deviceId: properties.deviceId || "",
+    folderId,
+    folderTitle: folder?.title || "",
     color: normalizeColor(properties.stroke || properties.color) || colorFor(id),
     pointCount: points.length,
+    distanceMeters,
+    distanceMiles: Number((distanceMeters / 1609.344).toFixed(2)),
+    durationMs: Math.max(0, last.time - first.time),
     start: first.time,
     end: last.time,
     points
   };
+}
+
+function calculateTrackDistance(points) {
+  let total = 0;
+  for (let i = 1; i < points.length; i++) {
+    total += haversineDistance(points[i - 1], points[i]);
+  }
+  return Math.round(total);
+}
+
+function haversineDistance(a, b) {
+  const R = 6371000;
+  const p1 = (a.lat * Math.PI) / 180;
+  const p2 = (b.lat * Math.PI) / 180;
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+  const dLng = ((b.lng - a.lng) * Math.PI) / 180;
+  const sinLat = Math.sin(dLat / 2);
+  const sinLng = Math.sin(dLng / 2);
+  const h = sinLat * sinLat + Math.cos(p1) * Math.cos(p2) * sinLng * sinLng;
+  return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
 }
 
 function normalizeFolder(feature, id) {
@@ -291,6 +320,44 @@ function markerImage(properties, icons) {
     iconRetinaUrl = 'https://caltopo.com/icon@2x.png?cfg=' + encodeURIComponent(cfg);
   }
   return { iconUrl, iconRetinaUrl, iconSize: [size, size], iconAnchor: [size * anchor[0], size * anchor[1]] };
+}
+
+const markerIconDataCache = new Map();
+
+async function attachMarkerIconData(markers) {
+  const uniqueUrls = new Set();
+  for (const m of markers) {
+    if (m.iconRetinaUrl && !markerIconDataCache.has(m.iconRetinaUrl)) uniqueUrls.add(m.iconRetinaUrl);
+    if (m.iconUrl && !markerIconDataCache.has(m.iconUrl)) uniqueUrls.add(m.iconUrl);
+  }
+  if (uniqueUrls.size > 0) {
+    await Promise.all(Array.from(uniqueUrls).map(async (url) => {
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 3000);
+        const res = await fetch(url, { signal: controller.signal });
+        clearTimeout(timer);
+        if (res && res.ok) {
+          const contentType = res.headers?.get ? (res.headers.get("content-type") || "image/png") : "image/png";
+          if (!contentType.includes("json")) {
+            const buffer = await res.arrayBuffer();
+            const base64 = Buffer.from(buffer).toString("base64");
+            markerIconDataCache.set(url, `data:${contentType.split(";")[0]};base64,${base64}`);
+          }
+        }
+      } catch {
+        // Silently continue; client has vector fallbacks
+      }
+    }));
+  }
+  for (const m of markers) {
+    if (m.iconRetinaUrl && markerIconDataCache.has(m.iconRetinaUrl)) {
+      m.iconRetinaDataUrl = markerIconDataCache.get(m.iconRetinaUrl);
+    }
+    if (m.iconUrl && markerIconDataCache.has(m.iconUrl)) {
+      m.iconDataUrl = markerIconDataCache.get(m.iconUrl);
+    }
+  }
 }
 
 function markerCreatedTime(properties) {

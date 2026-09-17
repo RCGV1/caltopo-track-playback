@@ -1,0 +1,18 @@
+<svg viewBox="0 0 32 32" width="32" height="32" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background Squircle -->
+  <rect width="32" height="32" rx="7.5" fill="#083330"/>
+
+  <!-- GPS Track Shadow / Contrast Halo -->
+  <polyline points="4,25 10,20 16,24.5" fill="none" stroke="#041a18" stroke-width="3.8" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Vibrant GPS Trail -->
+  <polyline points="4,25 10,20 16,24.5" fill="none" stroke="#2dd4bf" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Trail Waypoints -->
+  <circle cx="4" cy="25" r="2" fill="#ffffff" stroke="#041a18" stroke-width="0.8"/>
+  <circle cx="10" cy="20" r="1.4" fill="#ffffff"/>
+
+  <!-- CalTopo Map Pin Silhouette -->
+  <path d="M 16 3.5 C 11.3 3.5 7.5 7.3 7.5 12 C 7.5 17.8 16 26.5 16 26.5 C 16 26.5 24.5 17.8 24.5 12 C 24.5 7.3 20.7 3.5 16 3.5 Z" fill="#0b6f6a" stroke="#ffffff" stroke-width="1.4" stroke-linejoin="round"/>
+
+  <!-- Centered Playhead Triangle -->
+  <polygon points="14,8.5 20.2,12 14,15.5" fill="#ffffff"/>
+</svg>

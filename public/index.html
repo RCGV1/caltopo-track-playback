@@ -4,96 +4,1005 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CalTopo Playback Tool</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <style>
+    :root {
+      --primary: #0b6f6a;
+      --primary-hover: #085652;
+      --primary-light: rgba(11, 111, 106, 0.1);
+      --bg: #0f172a;
+      --panel-bg: #ffffff;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --border: #cbd5e1;
+      --border-subtle: #e2e8f0;
+      --radius: 8px;
+    }
+    body.dark-mode {
+      --primary: #2dd4bf;
+      --primary-hover: #14b8a6;
+      --primary-light: rgba(45, 212, 191, 0.15);
+      --bg: #0b0f19;
+      --panel-bg: rgba(15, 23, 42, 0.94);
+      --text: #f1f5f9;
+      --text-muted: #94a3b8;
+      --border: #334155;
+      --border-subtle: #1e293b;
+    }
     * { box-sizing: border-box; }
     [hidden] { display: none !important; }
-    body { margin: 0; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #17212b; background: #edf1f4; overflow: hidden; }
-    #map { position: absolute; inset: 0; }
-    .loader { position: absolute; inset: 0; z-index: 800; display: grid; place-items: center; background: #eef3f6; }
-    .load-card { width: min(620px, calc(100vw - 28px)); background: #fff; border: 1px solid #d7dde2; border-radius: 8px; box-shadow: 0 8px 24px rgba(22,32,42,.18); padding: 18px; }
-    h1 { margin: 0 0 10px; font-size: 24px; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      color: var(--text);
+      background: #e2e8f0;
+      overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+    #map { position: absolute; inset: 0; z-index: 0; background: #e2e8f0; }
+    .leaflet-container { background: #e2e8f0 !important; outline: 0; }
+    .leaflet-tile { image-rendering: auto; }
+
+    /* Map Controls Stacking */
+    .leaflet-control-zoom {
+      margin-top: 138px !important;
+      border: 1px solid rgba(0,0,0,0.15) !important;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.12) !important;
+      border-radius: 6px !important;
+      overflow: hidden;
+    }
+    .leaflet-control-scale {
+      margin-left: 12px !important;
+      margin-bottom: 8px !important;
+    }
+    .coords-bar {
+      position: absolute;
+      bottom: 8px;
+      left: 170px;
+      z-index: 1000;
+      background: rgba(255, 255, 255, 0.92);
+      backdrop-filter: blur(6px);
+      padding: 3px 10px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      font-size: 11px;
+      font-weight: 500;
+      color: #334155;
+      font-variant-numeric: tabular-nums;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+      pointer-events: auto;
+      user-select: none;
+    }
+
+    /* Loader Modal */
+    .loader {
+      position: absolute;
+      inset: 0;
+      z-index: 1200;
+      display: grid;
+      place-items: center;
+      background: rgba(238, 243, 246, 0.95);
+      backdrop-filter: blur(4px);
+    }
+    .load-card {
+      width: min(620px, calc(100vw - 28px));
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: 0 12px 32px rgba(15, 23, 42, 0.14);
+      padding: 24px;
+    }
+    .brand-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .brand-header h1 {
+      margin: 0;
+      font-size: 22px;
+      font-weight: 700;
+      color: #0f172a;
+    }
     .form { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
-    input, button, select { min-height: 36px; border: 1px solid #d7dde2; border-radius: 6px; background: #fff; color: #17212b; font: inherit; }
-    input { min-width: 0; padding: 0 10px; }
-    button { padding: 0 14px; font-weight: 700; cursor: pointer; }
-    button:disabled { cursor: wait; opacity: .72; }
-    button.primary { border-color: #0b6f6a; background: #0b6f6a; color: #fff; }
-    button.secondary { border-color: #c9d2da; background: #f8fafb; color: #17212b; }
-    .hint { margin-top: 10px; color: #5f6b76; font-size: 13px; line-height: 1.35; }
-    .loading { display: none; margin-top: 12px; }
-    .loading.active { display: grid; gap: 6px; }
-    .loading-text { color: #41505d; font-size: 13px; }
-    .progress { height: 7px; overflow: hidden; border-radius: 999px; background: #dce4ea; }
-    .progress span { display: block; width: 42%; height: 100%; border-radius: inherit; background: #0b6f6a; animation: loadbar 1.1s ease-in-out infinite; }
+    input, button, select {
+      min-height: 36px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--text);
+      font: inherit;
+      transition: all 0.15s ease;
+    }
+    input { min-width: 0; padding: 0 12px; }
+    input:focus, select:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px var(--primary-light);
+    }
+    button {
+      padding: 0 14px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      user-select: none;
+    }
+    button:disabled { cursor: wait; opacity: 0.7; }
+    button.primary { border-color: var(--primary); background: var(--primary); color: #fff; }
+    button.primary:hover:not(:disabled) { background: var(--primary-hover); border-color: var(--primary-hover); }
+    button.secondary { border-color: var(--border); background: #f8fafc; color: #1e293b; }
+    button.secondary:hover:not(:disabled) { background: #f1f5f9; border-color: #94a3b8; }
+    .hint { margin-top: 10px; color: var(--text-muted); font-size: 13px; line-height: 1.4; }
+    .loading { display: none; margin-top: 14px; }
+    .loading.active { display: grid; gap: 8px; }
+    .loading-text { color: #334155; font-size: 13px; font-weight: 500; }
+    .progress { height: 6px; overflow: hidden; border-radius: 999px; background: #e2e8f0; }
+    .progress span { display: block; width: 40%; height: 100%; border-radius: inherit; background: var(--primary); animation: loadbar 1.1s ease-in-out infinite; }
     @keyframes loadbar { 0% { transform: translateX(-110%); } 100% { transform: translateX(250%); } }
-    .error { margin-top: 10px; color: #9b1c1c; font-size: 13px; }
-    .topbar { position: absolute; top: 12px; left: 54px; right: 12px; z-index: 500; display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 360px); gap: 12px; align-items: start; pointer-events: none; }
-    .panel { pointer-events: auto; background: #fff; border: 1px solid rgba(0,0,0,.12); box-shadow: 0 8px 24px rgba(22,32,42,.18); border-radius: 8px; }
-    .controls { min-width: 0; min-height: 56px; padding: 10px 12px; display: grid; grid-template-columns: auto minmax(120px,1fr) minmax(92px,116px) minmax(92px,116px) minmax(92px,116px) minmax(140px,190px); gap: 10px; align-items: center; overflow: hidden; }
-    input[type=range] { width: 100%; accent-color: #0b6f6a; }
-    .control-label { display: grid; gap: 3px; color: #5f6b76; font-size: 11px; line-height: 1; }
-    .control-label select { width: 100%; min-width: 0; font-size: 14px; }
-    .time { min-width: 178px; grid-column: 1 / -1; text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; font-size: 17px; white-space: nowrap; }
-    .summary { max-height: calc(100vh - 24px); overflow: auto; padding: 12px; }
-    .summary-head { display: flex; align-items: start; justify-content: space-between; gap: 10px; }
-    .summary-head button { display: none; min-height: 30px; padding: 0 10px; }
-    .summary h1 { margin: 0 0 4px; font-size: 17px; line-height: 1.2; }
-    .meta { color: #5f6b76; font-size: 12px; line-height: 1.35; margin-bottom: 10px; }
-    .section { display: grid; gap: 6px; margin-top: 12px; }
-    .section:first-of-type { margin-top: 0; }
-    .section-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #41505d; font-size: 12px; font-weight: 800; letter-spacing: .02em; text-transform: uppercase; }
-    .section-title label { display: inline-flex; align-items: center; gap: 6px; color: #17212b; font-size: 12px; font-weight: 700; text-transform: none; letter-spacing: 0; }
-    .track-list, .marker-list { display: grid; gap: 6px; }
-    label.track, label.marker-row { display: grid; grid-template-columns: auto auto 1fr auto; gap: 8px; align-items: center; min-height: 30px; font-size: 13px; }
-    label.marker-row { grid-template-columns: auto auto 1fr auto; }
-    .swatch { width: 12px; height: 12px; border-radius: 50%; border: 1px solid rgba(0,0,0,.25); }
-    .marker-swatch { width: 16px; height: 16px; display: grid; place-items: center; border-radius: 4px; border: 1px solid rgba(0,0,0,.22); color: #fff; font-size: 9px; font-weight: 900; line-height: 1; }
-    .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .count { color: #5f6b76; font-variant-numeric: tabular-nums; font-size: 12px; }
-    .leaflet-tooltip.playback-label { border: 0; border-radius: 4px; background: rgba(23,33,43,.9); color: #fff; font-weight: 700; padding: 2px 6px; box-shadow: 0 2px 8px rgba(0,0,0,.25); }
-    .leaflet-tooltip.marker-label { border: 0; border-radius: 4px; background: rgba(23,33,43,.88); color: #fff; font-weight: 800; padding: 2px 6px; box-shadow: 0 2px 8px rgba(0,0,0,.25); }
-    .disclaimer { color: #5f6b76; font-size: 11px; line-height: 1.4; }
-    .summary .disclaimer { margin-top: 12px; }
-    .marker-popup { min-width: 180px; }
-    .marker-popup h2 { margin: 0 0 4px; font-size: 15px; line-height: 1.2; }
-    .marker-popup .folder { color: #5f6b76; font-size: 12px; margin-bottom: 6px; }
-    .marker-popup .desc { color: #17212b; font-size: 13px; line-height: 1.35; white-space: pre-wrap; }
-    @media (max-width: 1100px) { .controls { grid-template-columns: auto minmax(90px,1fr) repeat(3, minmax(88px, 1fr)); } .control-label:last-of-type { grid-column: span 2; } }
-    @media (max-width: 900px) { .topbar { top: 8px; left: 8px; right: 8px; grid-template-columns: 1fr; gap: 8px; } .controls { grid-template-columns: auto minmax(0,1fr) minmax(86px,104px); gap: 8px; padding: 8px; } .control-label { min-width: 0; } .control-label:last-of-type { grid-column: auto; } .time { grid-column: 1 / -1; text-align: left; font-size: 15px; overflow: hidden; text-overflow: ellipsis; } .summary { max-height: 38vh; padding: 10px; } }
-    @media (max-width: 620px) {
-      body { font-size: 14px; }
-      .leaflet-control-zoom { margin-top: 132px !important; }
-      .topbar { bottom: 8px; align-content: start; }
-      .controls { grid-template-columns: auto minmax(0,1fr); gap: 7px; }
-      .controls .control-label { grid-column: span 1; }
-      .control-label select { min-height: 32px; font-size: 13px; }
-      #play { min-width: 72px; }
+    .error { margin-top: 10px; color: #dc2626; font-size: 13px; font-weight: 500; }
+
+    /* Top Bar & Stacking Hierarchy (z-index 1100 above all Leaflet layers) */
+    .topbar {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      right: 12px;
+      z-index: 1100;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(320px, 380px);
+      gap: 12px;
+      align-items: start;
+      pointer-events: none;
+    }
+    .panel {
+      pointer-events: auto;
+      background: var(--panel-bg);
+      border: 1px solid rgba(0,0,0,0.12);
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+      border-radius: var(--radius);
+    }
+
+    /* Controls Panel */
+    .controls {
+      min-width: 0;
+      padding: 10px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .controls-transport {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+    #play {
+      min-width: 74px;
+      height: 36px;
+      font-size: 13px;
+      letter-spacing: 0.02em;
+    }
+    .transport-btn {
+      min-width: 34px;
+      height: 34px;
+      min-height: 34px;
+      padding: 0;
+      font-size: 12px;
+      font-weight: 700;
+      border-radius: 6px;
+    }
+    .slider-container {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      min-width: 80px;
+      position: relative;
+    }
+    input[type=range] {
+      width: 100%;
+      height: 6px;
+      accent-color: var(--primary);
+      cursor: pointer;
+      margin: 0;
+      padding: 0;
+      border: none;
+      background: #e2e8f0;
+      border-radius: 4px;
+    }
+    input[type=range]:focus {
+      box-shadow: none;
+    }
+    .time-container {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-left: 4px;
+      white-space: nowrap;
+      user-select: none;
+    }
+    .time {
+      font-variant-numeric: tabular-nums;
+      font-weight: 700;
+      font-size: 14px;
+      color: #0f172a;
+      letter-spacing: -0.01em;
+      min-width: 155px;
+      text-align: right;
+    }
+    .tz-btn {
+      padding: 3px 6px;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      border-radius: 4px;
+      min-height: 22px;
+      line-height: 1;
+      border-color: #cbd5e1;
+      background: #f8fafc;
+      color: #475569;
+    }
+    .tz-btn:hover {
+      background: #e2e8f0;
+      color: #0f172a;
+    }
+
+    /* Options Row */
+    .controls-options {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      padding-top: 4px;
+      border-top: 1px solid var(--border-subtle);
+    }
+    .control-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      color: var(--text-muted);
+      font-size: 11px;
+      font-weight: 600;
+      line-height: 1;
+      white-space: nowrap;
+    }
+    .control-label select {
+      min-height: 28px;
+      height: 28px;
+      padding: 0 6px;
+      font-size: 12px;
+      font-weight: 500;
+      border-radius: 4px;
+      border-color: #d1d5db;
+      background-color: #f8fafc;
+      color: #1e293b;
+    }
+    .control-label select:hover {
+      border-color: #94a3b8;
+    }
+
+    /* Sidebar Panel */
+    .summary {
+      max-height: calc(100vh - 24px);
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .summary-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .summary-head h1 { margin: 0; font-size: 16px; font-weight: 700; }
+    .summary-head button { display: none; min-height: 28px; padding: 0 10px; font-size: 12px; }
+    .meta { color: var(--text-muted); font-size: 12px; line-height: 1.4; }
+    .disclaimer { color: #64748b; font-size: 11px; line-height: 1.35; margin: 0; }
+    .section { display: grid; gap: 6px; }
+    .section-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      color: #334155;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      padding-bottom: 2px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .section-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      text-transform: none;
+      letter-spacing: 0;
+    }
+    .mini-btn {
+      min-height: 20px;
+      height: 20px;
+      padding: 0 6px;
+      font-size: 10px;
+      font-weight: 700;
+      border-radius: 3px;
+      border-color: #cbd5e1;
+      background: #f8fafc;
+      color: #475569;
+    }
+    .mini-btn:hover { background: #e2e8f0; color: #0f172a; }
+    .track-list, .marker-list { display: grid; gap: 3px; max-height: 38vh; overflow-y: auto; padding-right: 2px; }
+    
+    /* Clean Team / Track Row Structure with Distinct Hitboxes */
+    .track-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 28px;
+      border-radius: 6px;
+      user-select: none;
+      transition: all 0.12s ease;
+      padding: 2px 4px;
+      background: transparent;
+    }
+    .track-check {
+      margin: 0;
+      width: 16px;
+      height: 16px;
+      flex-shrink: 0;
+      cursor: pointer;
+      accent-color: var(--primary);
+    }
+    .track-btn {
+      flex: 1;
+      min-width: 0;
+      display: grid;
+      grid-template-columns: auto 1fr auto auto;
+      gap: 8px;
+      align-items: center;
+      padding: 3px 6px;
+      border-radius: 4px;
+      background: transparent;
+      border: 1px solid transparent;
+      cursor: pointer;
+      text-align: left;
+      font: inherit;
+      color: inherit;
+      transition: all 0.12s ease;
+    }
+    /* Dynamic, Team-Color Matching Highlight */
+    .track-row:hover .track-btn,
+    .track-row.hovered .track-btn {
+      background: color-mix(in srgb, var(--track-color, #0b6f6a) 12%, transparent);
+      border-color: color-mix(in srgb, var(--track-color, #0b6f6a) 35%, transparent);
+    }
+    .track-row.selected .track-btn {
+      background: color-mix(in srgb, var(--track-color, #0b6f6a) 18%, transparent);
+      border-color: var(--track-color, #0b6f6a);
+      box-shadow: 0 0 0 1px var(--track-color, #0b6f6a);
+    }
+
+    label.marker-row {
+      display: grid;
+      grid-template-columns: auto auto 1fr auto;
+      gap: 8px;
+      align-items: center;
+      min-height: 28px;
+      padding: 3px 6px;
+      border-radius: 4px;
+      font-size: 12px;
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.12s ease;
+    }
+    label.marker-row:hover, label.marker-row.hovered {
+      background: rgba(15, 23, 42, 0.05);
+    }
+    .swatch { width: 12px; height: 12px; border-radius: 50%; border: 1px solid rgba(0,0,0,0.25); flex-shrink: 0; }
+    .marker-swatch { width: 16px; height: 16px; display: grid; place-items: center; border-radius: 4px; border: 1px solid rgba(0,0,0,0.22); color: #fff; font-size: 9px; font-weight: 900; line-height: 1; flex-shrink: 0; }
+    .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; font-size: 12px; color: #1e293b; }
+    .dist { color: #0b6f6a; font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .count { color: #64748b; font-variant-numeric: tabular-nums; font-size: 11px; white-space: nowrap; }
+
+    /* Map Tooltips & Popups */
+    .leaflet-tooltip.playback-label {
+      border: 1px solid rgba(0,0,0,0.35);
+      border-radius: 4px;
+      background: rgba(15, 23, 42, 0.88);
+      backdrop-filter: blur(2px);
+      color: #fff;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 6px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+      pointer-events: none;
+      white-space: nowrap;
+    }
+    .leaflet-tooltip.marker-label {
+      border: 1px solid rgba(0,0,0,0.3);
+      border-radius: 4px;
+      background: rgba(30, 41, 59, 0.92);
+      color: #fff;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 7px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+      pointer-events: none;
+    }
+    .marker-popup { min-width: 190px; max-width: 280px; }
+    .marker-popup h2 { margin: 0 0 4px; font-size: 14px; font-weight: 700; color: #0f172a; line-height: 1.3; }
+    .marker-popup .folder { color: #64748b; font-size: 11px; margin-bottom: 6px; font-weight: 600; }
+    .marker-popup .desc { color: #334155; font-size: 12px; line-height: 1.4; white-space: pre-wrap; display: grid; gap: 4px; }
+
+    /* Responsive Queries */
+    @media (max-width: 1024px) {
+      .topbar {
+        grid-template-columns: 1fr;
+        gap: 8px;
+      }
+      .summary {
+        max-height: 32vh;
+      }
+      .leaflet-control-zoom {
+        margin-top: 175px !important;
+      }
+    }
+    @media (max-width: 640px) {
+      .topbar {
+        top: 6px;
+        left: 6px;
+        right: 6px;
+        grid-template-columns: 1fr;
+      }
+      .leaflet-control-zoom {
+        margin-top: 190px !important;
+      }
+      .controls { padding: 8px 10px; }
+      .controls-transport { flex-wrap: wrap; }
+      .time-container { margin-left: 0; width: 100%; justify-content: space-between; }
       .time { font-size: 13px; }
-      .summary { position: fixed; left: 8px; right: 8px; bottom: 8px; max-height: min(58vh, 430px); padding: 10px; transition: max-height .18s ease, padding .18s ease; }
-      .summary-head { align-items: center; }
-      .summary-head button { display: inline-flex; align-items: center; justify-content: center; }
-      body.mobile-list-collapsed .summary { max-height: 48px; overflow: hidden; padding-bottom: 8px; }
-      body.mobile-list-collapsed .summary .meta,
-      body.mobile-list-collapsed .summary .disclaimer,
-      body.mobile-list-collapsed .summary .section { display: none; }
-      body.mobile-list-collapsed .summary h1 { margin-bottom: 0; }
-      label.track, label.marker-row { min-height: 28px; font-size: 12px; }
-      .name { white-space: normal; line-height: 1.2; }
+      .coords-bar { display: none; }
+      .summary {
+        position: fixed;
+        left: 6px;
+        right: 6px;
+        bottom: 6px;
+        max-height: min(54vh, 380px);
+        padding: 10px;
+        transition: max-height 0.2s ease, padding 0.2s ease;
+      }
+      body.mobile-list-collapsed .summary {
+        max-height: 42px;
+      }
+    }
+
+    .checkbox-control {
+      cursor: pointer;
+      user-select: none;
+    }
+
+    /* Tactile Transport Controls */
+    .transport-pill-play {
+      min-width: 88px;
+      height: 36px;
+      padding: 0 14px;
+      font-size: 13px;
+      font-weight: 700;
+      border-radius: 999px;
+      letter-spacing: 0.01em;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+      box-shadow: 0 2px 6px rgba(11, 111, 106, 0.25);
+    }
+    .transport-pill-play:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(11, 111, 106, 0.35);
+    }
+    .transport-pill-play:active {
+      transform: scale(0.95);
+    }
+    .transport-pill-play.playing {
+      background: #085652;
+      border-color: #085652;
+      box-shadow: 0 0 12px rgba(11, 111, 106, 0.45);
+    }
+    .transport-pill-play.finished {
+      background: #d97706;
+      border-color: #b45309;
+      box-shadow: 0 2px 8px rgba(217, 119, 6, 0.3);
+    }
+    .transport-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+    }
+    .transport-btn.loop-btn.active {
+      background: #0b6f6a;
+      color: #ffffff;
+      border-color: #0b6f6a;
+      box-shadow: 0 0 8px rgba(11, 111, 106, 0.4);
+    }
+    .export-btn {
+      height: 34px;
+      padding: 0 12px;
+      font-size: 12px;
+      font-weight: 700;
+      border-radius: 6px;
+      background: #0f172a;
+      border-color: #1e293b;
+      color: #38bdf8;
+      margin-left: 4px;
+      white-space: nowrap;
+    }
+    .export-btn:hover {
+      background: #1e293b;
+      border-color: #38bdf8;
+      color: #ffffff;
+    }
+
+    /* Map Center HUD Ripple Feedback - Disabled per user preference */
+    .map-hud {
+      display: none !important;
+    }
+
+    /* Export Studio Modal */
+    .export-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 1300;
+      display: grid;
+      place-items: center;
+      background: rgba(15, 23, 42, 0.7);
+      backdrop-filter: blur(6px);
+      padding: 20px;
+    }
+    .export-card {
+      width: min(780px, calc(100vw - 32px));
+      background: #ffffff;
+      border-radius: 14px;
+      border: 1px solid rgba(0,0,0,0.15);
+      box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      max-height: 90vh;
+    }
+    .export-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .export-header h2 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 800;
+      color: #0f172a;
+    }
+    .export-body {
+      padding: 20px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      overflow-y: auto;
+    }
+    @media (max-width: 720px) {
+      .export-body { grid-template-columns: 1fr; }
+    }
+    .export-settings {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .setting-group {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    .setting-label {
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #475569;
+    }
+    .setting-hint {
+      font-size: 11px;
+      color: #64748b;
+      line-height: 1.35;
+    }
+    .format-chips {
+      display: flex;
+      gap: 8px;
+    }
+    .chip {
+      flex: 1;
+      padding: 8px 12px;
+      font-size: 12px;
+      font-weight: 700;
+      border-radius: 6px;
+      border: 1px solid #cbd5e1;
+      background: #f8fafc;
+      color: #334155;
+      cursor: pointer;
+      transition: all 0.12s ease;
+    }
+    .chip.active {
+      background: #0b6f6a;
+      border-color: #0b6f6a;
+      color: #ffffff;
+    }
+    .setting-grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .checkbox-row {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 12px;
+      color: #334155;
+    }
+    .checkbox-row label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+    }
+    .export-preview-col {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      align-items: center;
+      justify-content: center;
+    }
+    .preview-box {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      background: #0f172a;
+      border-radius: 8px;
+      overflow: hidden;
+      position: relative;
+      border: 1px solid #cbd5e1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .preview-box canvas {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+    }
+    .preview-info {
+      font-size: 11px;
+      color: #64748b;
+      text-align: center;
+    }
+    .export-status-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.88);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: #ffffff;
+      padding: 16px;
+      text-align: center;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .export-spinner {
+      width: 28px;
+      height: 28px;
+      border: 3px solid rgba(255,255,255,0.2);
+      border-top-color: #38bdf8;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-bottom: 8px;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .export-footer {
+      padding: 14px 20px;
+      border-top: 1px solid #e2e8f0;
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      background: #f8fafc;
+    }
+
+    /* ==========================================================================
+       Dark Mode Styles & Theme Overrides
+       ========================================================================== */
+    body.dark-mode {
+      background: #0b0f19;
+      color: #f1f5f9;
+    }
+    body.dark-mode #map {
+      background: #0b0f19;
+    }
+    body.dark-mode .leaflet-container {
+      background: #0b0f19 !important;
+    }
+    body.dark-mode .panel {
+      background: rgba(15, 23, 42, 0.94);
+      border-color: rgba(255, 255, 255, 0.14);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+      backdrop-filter: blur(8px);
+    }
+    body.dark-mode .loader {
+      background: rgba(11, 15, 25, 0.96);
+    }
+    body.dark-mode .load-card {
+      background: #1e293b;
+      border-color: #334155;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
+    }
+    body.dark-mode .brand-header h1 {
+      color: #f1f5f9;
+    }
+    body.dark-mode input,
+    body.dark-mode select {
+      background: #0f172a;
+      color: #f1f5f9;
+      border-color: #334155;
+    }
+    body.dark-mode input:focus,
+    body.dark-mode select:focus {
+      border-color: #2dd4bf;
+      box-shadow: 0 0 0 3px rgba(45, 212, 191, 0.2);
+    }
+    body.dark-mode input[type=range] {
+      background: #334155;
+      accent-color: #2dd4bf;
+    }
+    body.dark-mode button.secondary,
+    body.dark-mode .tz-btn,
+    body.dark-mode .mini-btn {
+      background: #1e293b;
+      color: #e2e8f0;
+      border-color: #334155;
+    }
+    body.dark-mode button.secondary:hover:not(:disabled),
+    body.dark-mode .tz-btn:hover,
+    body.dark-mode .mini-btn:hover {
+      background: #334155;
+      border-color: #475569;
+      color: #ffffff;
+    }
+    body.dark-mode .time {
+      color: #f1f5f9;
+    }
+    body.dark-mode .controls-options {
+      border-top-color: #1e293b;
+    }
+    body.dark-mode .control-label {
+      color: #94a3b8;
+    }
+    body.dark-mode .control-label select {
+      background: #0f172a;
+      color: #f1f5f9;
+      border-color: #334155;
+    }
+    body.dark-mode .control-label select:hover {
+      border-color: #475569;
+    }
+    body.dark-mode .section-title {
+      color: #cbd5e1;
+      border-bottom-color: #1e293b;
+    }
+    body.dark-mode .name {
+      color: #f1f5f9;
+    }
+    body.dark-mode .dist {
+      color: #2dd4bf;
+    }
+    body.dark-mode .count {
+      color: #94a3b8;
+    }
+    body.dark-mode .meta {
+      color: #94a3b8;
+    }
+    body.dark-mode .disclaimer {
+      color: #64748b;
+    }
+    body.dark-mode .loading-text {
+      color: #cbd5e1;
+    }
+    body.dark-mode .progress {
+      background: #334155;
+    }
+    body.dark-mode .coords-bar {
+      background: rgba(15, 23, 42, 0.92);
+      border-color: #334155;
+      color: #cbd5e1;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+    }
+    body.dark-mode .track-row:hover .track-btn,
+    body.dark-mode .track-row.hovered .track-btn {
+      background: color-mix(in srgb, var(--track-color, #2dd4bf) 18%, transparent);
+      border-color: color-mix(in srgb, var(--track-color, #2dd4bf) 45%, transparent);
+    }
+    body.dark-mode .track-row.selected .track-btn {
+      background: color-mix(in srgb, var(--track-color, #2dd4bf) 25%, transparent);
+      border-color: var(--track-color, #2dd4bf);
+      box-shadow: 0 0 0 1px var(--track-color, #2dd4bf);
+    }
+    body.dark-mode label.marker-row:hover,
+    body.dark-mode label.marker-row.hovered {
+      background: rgba(255, 255, 255, 0.08);
+    }
+    body.dark-mode .export-modal {
+      background: rgba(3, 7, 18, 0.82);
+    }
+    body.dark-mode .export-card {
+      background: #1e293b;
+      border-color: #334155;
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.7);
+    }
+    body.dark-mode .export-header {
+      border-bottom-color: #334155;
+    }
+    body.dark-mode .export-header h2 {
+      color: #f1f5f9;
+    }
+    body.dark-mode .setting-label {
+      color: #cbd5e1;
+    }
+    body.dark-mode .setting-hint {
+      color: #94a3b8;
+    }
+    body.dark-mode .chip {
+      background: #0f172a;
+      border-color: #334155;
+      color: #cbd5e1;
+    }
+    body.dark-mode .chip:hover {
+      border-color: #475569;
+    }
+    body.dark-mode .chip.active {
+      background: #0b6f6a;
+      border-color: #0b6f6a;
+      color: #ffffff;
+    }
+    body.dark-mode .checkbox-row {
+      color: #cbd5e1;
+    }
+    body.dark-mode .preview-box {
+      background: #0b0f19;
+      border-color: #334155;
+    }
+    body.dark-mode .preview-info {
+      color: #94a3b8;
+    }
+    body.dark-mode .export-footer {
+      background: #0f172a;
+      border-top-color: #334155;
+    }
+    body.dark-mode .export-btn {
+      background: #1e293b;
+      border-color: #0284c7;
+      color: #38bdf8;
+    }
+    body.dark-mode .export-btn:hover {
+      background: #0284c7;
+      border-color: #38bdf8;
+      color: #ffffff;
+    }
+    body.dark-mode .leaflet-control-zoom {
+      border-color: #334155 !important;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4) !important;
+    }
+    body.dark-mode .leaflet-control-zoom a {
+      background-color: #1e293b !important;
+      color: #f1f5f9 !important;
+      border-bottom-color: #334155 !important;
+    }
+    body.dark-mode .leaflet-control-zoom a:hover {
+      background-color: #334155 !important;
+      color: #ffffff !important;
+    }
+    body.dark-mode .leaflet-control-scale-line {
+      background: rgba(15, 23, 42, 0.85) !important;
+      border-color: #475569 !important;
+      color: #e2e8f0 !important;
+      text-shadow: 1px 1px 2px #000;
+    }
+    body.dark-mode .leaflet-popup-content-wrapper,
+    body.dark-mode .leaflet-popup-tip {
+      background: #1e293b !important;
+      color: #f1f5f9 !important;
+      border: 1px solid #334155;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5) !important;
+    }
+    body.dark-mode .marker-popup h2 {
+      color: #f1f5f9;
+    }
+    body.dark-mode .marker-popup .folder {
+      color: #94a3b8;
+    }
+    body.dark-mode .marker-popup .desc {
+      color: #cbd5e1;
+    }
+    body.dark-mode .marker-popup strong {
+      color: #f1f5f9;
+    }
+    body.dark-mode .leaflet-popup-close-button {
+      color: #94a3b8 !important;
+    }
+    body.dark-mode .leaflet-popup-close-button:hover {
+      color: #f1f5f9 !important;
+    }
+    body.dark-mode ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    body.dark-mode ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    body.dark-mode ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 4px;
+    }
+    body.dark-mode ::-webkit-scrollbar-thumb:hover {
+      background: #475569;
+    }
+    .theme-toggle-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 0 8px;
+      font-weight: 600;
+      cursor: pointer;
+      user-select: none;
+      transition: all 0.15s ease;
+    }
+    .theme-toggle-btn:hover {
+      transform: translateY(-1px);
     }
   </style>
 </head>
 <body>
   <div id="map"></div>
+  <div id="coordsDisplay" class="coords-bar">Move mouse over map</div>
+
   <div id="loader" class="loader">
     <div class="load-card">
-      <h1>CalTopo Playback Tool</h1>
+      <div class="brand-header">
+        <svg width="28" height="28" viewBox="0 0 32 32" aria-hidden="true">
+          <rect width="32" height="32" rx="7.5" fill="#083330"/>
+          <polyline points="4,25 10,20 16,24.5" fill="none" stroke="#041a18" stroke-width="3.8" stroke-linecap="round" stroke-linejoin="round"/>
+          <polyline points="4,25 10,20 16,24.5" fill="none" stroke="#2dd4bf" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="4" cy="25" r="2" fill="#ffffff" stroke="#041a18" stroke-width="0.8"/>
+          <circle cx="10" cy="20" r="1.4" fill="#ffffff"/>
+          <path d="M 16 3.5 C 11.3 3.5 7.5 7.3 7.5 12 C 7.5 17.8 16 26.5 16 26.5 C 16 26.5 24.5 17.8 24.5 12 C 24.5 7.3 20.7 3.5 16 3.5 Z" fill="#0b6f6a" stroke="#ffffff" stroke-width="1.4" stroke-linejoin="round"/>
+          <polygon points="14,8.5 20.2,12 14,15.5" fill="#ffffff"/>
+        </svg>
+        <h1 style="flex: 1;">CalTopo Playback Tool</h1>
+        <button id="themeToggleLoader" class="secondary mini-btn theme-toggle-btn" type="button" title="Toggle Dark/Light Mode (D)" aria-label="Toggle dark mode">
+          <span class="theme-icon">🌙</span> <span class="theme-text">Dark</span>
+        </button>
+      </div>
       <form id="loadForm" class="form">
         <input id="mapInput" placeholder="Paste any CalTopo map share link or map ID">
         <button id="load" class="primary">Load</button>
       </form>
-      <div class="hint">Works for CalTopo maps that are public or secret-link accessible. It reads timestamped Shape, AppTrack, FieldTrack, and LiveTrack lines.</div>
-      <p class="disclaimer">Independent tool. Not affiliated with, endorsed by, or sponsored by CalTopo.</p>
+      <div class="hint">Replay timestamped Shape, AppTrack, FieldTrack, and LiveTrack lines from public or share-link maps.</div>
+      <p class="disclaimer" style="margin-top: 8px;">Independent tool. Not affiliated with, endorsed by, or sponsored by CalTopo.</p>
       <div id="loading" class="loading">
         <div id="loadingText" class="loading-text">Loading CalTopo tracks...</div>
         <div class="progress"><span></span></div>
@@ -101,48 +1010,399 @@
       <div id="error" class="error"></div>
     </div>
   </div>
+
   <div class="topbar" hidden>
     <div class="panel controls">
-      <button id="play" class="primary">Play</button>
-      <input id="slider" type="range" min="0" max="1000" value="0" step="1">
-      <label class="control-label">Speed<select id="speed"><option value="60">60x</option><option value="180" selected>180x</option><option value="600">600x</option><option value="1800">1800x</option><option value="3600">3600x</option></select></label>
-      <label class="control-label">Stale<select id="stale"><option value="0">Never</option><option value="300000">5 min</option><option value="600000" selected>10 min</option><option value="1200000">20 min</option><option value="1800000">30 min</option></select></label>
-      <label class="control-label">View<select id="mode"><option value="trail" selected>Trails</option><option value="position">Positions</option></select></label>
-      <label class="control-label">Range<select id="range"></select></label>
-      <div id="time" class="time"></div>
+      <!-- Transport Row: Play, Scrub, Step, Time, Timezone -->
+      <div class="controls-transport">
+        <button id="play" class="primary transport-pill-play" aria-label="Play playback" title="Play / Pause (Space)">
+          <span id="playIcon" class="transport-icon">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><polygon points="6,4 20,12 6,20"/></svg>
+          </span>
+          <span id="playLabel">Play</span>
+        </button>
+        <button id="loopToggle" class="secondary transport-btn loop-btn" title="Toggle continuous loop (L)">🔁</button>
+        <button id="stepBack" class="secondary transport-btn" title="Step back 1 minute (Left Arrow)">◀ -1m</button>
+        <div class="slider-container">
+          <input id="slider" type="range" min="0" max="1000" value="0" step="1" aria-label="Timeline scrubber">
+        </div>
+        <button id="stepForward" class="secondary transport-btn" title="Step forward 1 minute (Right Arrow)">+1m ▶</button>
+        <div class="time-container">
+          <div id="time" class="time"></div>
+          <button id="tzToggle" class="secondary tz-btn" title="Toggle Local / UTC time">LOCAL</button>
+        </div>
+        <button id="exportOpen" class="primary export-btn" title="Export MP4 video or animated GIF with pan & zoom">🎥 Export</button>
+      </div>
+
+      <!-- Settings Row: Speed, Stale, View Mode, Labels Mode, Base Layer, Range -->
+      <div class="controls-options">
+        <label class="control-label">Speed
+          <select id="speed">
+            <option value="1">1x</option>
+            <option value="5">5x</option>
+            <option value="15">15x</option>
+            <option value="60">60x</option>
+            <option value="180" selected>180x</option>
+            <option value="600">600x</option>
+            <option value="1800">1800x</option>
+            <option value="3600">3600x</option>
+          </select>
+        </label>
+        <label class="control-label">Stale
+          <select id="stale">
+            <option value="0">Never</option>
+            <option value="300000">5 min</option>
+            <option value="600000" selected>10 min</option>
+            <option value="1200000">20 min</option>
+            <option value="1800000">30 min</option>
+          </select>
+        </label>
+        <label class="control-label">View
+          <select id="mode">
+            <option value="trail" selected>Trails</option>
+            <option value="position">Positions</option>
+            <option value="full">Full Path</option>
+          </select>
+        </label>
+        <label class="control-label">Labels
+          <select id="labelsMode">
+            <option value="all" selected>Always Show</option>
+            <option value="hover">On Hover</option>
+            <option value="none">Off</option>
+          </select>
+        </label>
+        <label class="control-label">Layer
+          <select id="baseLayer">
+            <option value="osm" selected>OpenStreetMap</option>
+            <option value="esri_dark">Dark (Esri)</option>
+            <option value="opentopo">OpenTopoMap</option>
+            <option value="satellite">Satellite (Esri)</option>
+            <option value="usgs">USGS Topo</option>
+          </select>
+        </label>
+        <label class="control-label">Range
+          <select id="range"></select>
+        </label>
+        <label class="control-label checkbox-control" title="Automatically skip idle gaps (>5m) where no tracks are moving">
+          <input id="activeOnly" type="checkbox" checked style="width: 14px; height: 14px; accent-color: #0b6f6a; cursor: pointer; margin: 0;">
+          Active Only
+        </label>
+        <button id="themeToggle" class="secondary mini-btn theme-toggle-btn" type="button" title="Toggle Dark/Light Mode (D)" aria-label="Toggle dark mode">
+          <span class="theme-icon">🌙</span> <span class="theme-text">Dark</span>
+        </button>
+      </div>
     </div>
+
+    <!-- Sidebar: Tracks & Markers -->
     <aside class="panel summary">
-      <div class="summary-head"><h1>Track Playback</h1><button id="listToggle" class="secondary">List</button></div>
+      <div class="summary-head">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <svg width="22" height="22" viewBox="0 0 32 32" aria-hidden="true">
+            <rect width="32" height="32" rx="7.5" fill="#083330"/>
+            <polyline points="4,25 10,20 16,24.5" fill="none" stroke="#041a18" stroke-width="3.8" stroke-linecap="round" stroke-linejoin="round"/>
+            <polyline points="4,25 10,20 16,24.5" fill="none" stroke="#2dd4bf" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="4" cy="25" r="2" fill="#ffffff" stroke="#041a18" stroke-width="0.8"/>
+            <circle cx="10" cy="20" r="1.4" fill="#ffffff"/>
+            <path d="M 16 3.5 C 11.3 3.5 7.5 7.3 7.5 12 C 7.5 17.8 16 26.5 16 26.5 C 16 26.5 24.5 17.8 24.5 12 C 24.5 7.3 20.7 3.5 16 3.5 Z" fill="#0b6f6a" stroke="#ffffff" stroke-width="1.4" stroke-linejoin="round"/>
+            <polygon points="14,8.5 20.2,12 14,15.5" fill="#ffffff"/>
+          </svg>
+          <h1 style="margin: 0; font-size: 16px; font-weight: 700;">Track Playback</h1>
+        </div>
+        <button id="listToggle" class="secondary">List</button>
+      </div>
       <div id="meta" class="meta"></div>
       <p class="disclaimer">Independent tool. Not affiliated with, endorsed by, or sponsored by CalTopo.</p>
+      
       <div class="section">
-        <div class="section-title">Tracks</div>
+        <div class="section-title">
+          <span>Tracks</span>
+          <div class="section-actions">
+            <button id="tracksAll" class="mini-btn">All</button>
+            <button id="tracksNone" class="mini-btn">None</button>
+          </div>
+        </div>
         <div id="trackList" class="track-list"></div>
       </div>
+
       <div id="markerSection" class="section" hidden>
-        <div class="section-title">Markers<label><input id="markersToggle" type="checkbox" checked> Show</label></div>
+        <div class="section-title">
+          <span>Markers</span>
+          <div class="section-actions">
+            <label style="display: inline-flex; align-items: center; gap: 4px; font-size: 11px; margin-right: 4px;">
+              <input id="markersToggle" type="checkbox" checked> Show
+            </label>
+            <button id="markersAll" class="mini-btn">All</button>
+            <button id="markersNone" class="mini-btn">None</button>
+          </div>
+        </div>
         <div id="markerList" class="marker-list"></div>
       </div>
     </aside>
   </div>
+
+  <!-- Map Center HUD Ripple Feedback -->
+  <div id="mapHud" class="map-hud" aria-hidden="true"></div>
+
+  <!-- Export Studio Modal -->
+  <div id="exportModal" class="export-modal" hidden>
+    <div class="export-card">
+      <div class="export-header">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 20px;">🎥</span>
+          <h2>Export Playback Studio</h2>
+        </div>
+        <button id="exportClose" class="mini-btn" style="font-size: 16px; min-height: 26px; padding: 0 8px;" title="Close modal">&times;</button>
+      </div>
+      
+      <div class="export-body">
+        <div class="export-settings">
+          <div class="setting-group">
+            <label class="setting-label">Format</label>
+            <div class="format-chips">
+              <button type="button" class="chip active" id="chipVideo" data-format="video">🎬 MP4 / WebM Video</button>
+              <button type="button" class="chip" id="chipGif" data-format="gif">🎞 Animated GIF</button>
+            </div>
+          </div>
+
+          <div class="setting-group">
+            <label class="setting-label" for="exportCamera">Camera Motion</label>
+            <select id="exportCamera">
+              <option value="static" selected>Match Map View (Current Extent &amp; Zoom)</option>
+              <option value="autocam">Cinematic Auto-Cam (Dynamic Pan &amp; Zoom)</option>
+              <option value="follow">Follow Selected Team</option>
+            </select>
+            <div id="exportCameraHint" class="setting-hint">"Match Map View" exports the exact framing and zoom shown on the interactive map.</div>
+          </div>
+
+          <div class="setting-group" id="exportFollowTeamGroup" style="display: none;">
+            <label class="setting-label" for="exportFollowTeam">Select Team to Follow</label>
+            <select id="exportFollowTeam"></select>
+            <div class="setting-hint">Camera will lock on and smoothly follow this team throughout the replay.</div>
+          </div>
+
+          <div class="setting-grid-2">
+            <div class="setting-group">
+              <label class="setting-label" for="exportRes">Resolution</label>
+              <select id="exportRes">
+                <option value="1080p" selected>1080p Full HD (1920&times;1080)</option>
+                <option value="720p">720p HD (1280&times;720)</option>
+                <option value="square">1:1 Square (1080&times;1080)</option>
+                <option value="vertical">9:16 Vertical (1080&times;1920)</option>
+              </select>
+            </div>
+            <div class="setting-group">
+              <label class="setting-label" for="exportDuration">Clip Duration</label>
+              <select id="exportDuration">
+                <option value="10">10 Seconds (Fast)</option>
+                <option value="15" selected>15 Seconds (Standard)</option>
+                <option value="30">30 Seconds (Detailed)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="setting-group">
+            <label class="setting-label">Overlays &amp; Badges</label>
+            <div class="checkbox-row">
+              <label><input id="exportShowTime" type="checkbox" checked> Timestamp HUD</label>
+              <label><input id="exportShowLegend" type="checkbox" checked> Team Legend</label>
+              <label><input id="exportShowMarkerLabels" type="checkbox"> Marker Names</label>
+              <label><input id="exportShowLogo" type="checkbox" checked> Brand Watermark</label>
+            </div>
+          </div>
+        </div>
+
+        <div class="export-preview-col">
+          <div class="preview-box">
+            <canvas id="exportCanvas" width="640" height="360"></canvas>
+            <div id="exportStatusOverlay" class="export-status-overlay" hidden>
+              <div class="export-spinner"></div>
+              <div id="exportProgressText">Rendering frame 0...</div>
+              <div class="progress" style="width: 80%; margin-top: 8px;"><span id="exportProgressBar" style="width: 0%;"></span></div>
+              <button id="exportCancelBtn" class="mini-btn" style="margin-top: 10px; background: rgba(220,38,38,0.2); border-color: #dc2626; color: #fff;">Cancel</button>
+            </div>
+          </div>
+          <div class="preview-info" id="exportPreviewInfo">Offline deterministic render &bull; Smooth gimbal pan &amp; zoom</div>
+        </div>
+      </div>
+
+      <div class="export-footer">
+        <button id="exportCancel" class="secondary">Close</button>
+        <button id="exportStartBtn" class="primary" style="min-width: 150px;">Render &amp; Download</button>
+      </div>
+    </div>
+  </div>
+
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
-    const map = L.map("map", { preferCanvas: true });
+    const map = L.map("map", { preferCanvas: true, zoomControl: true });
     let playbackLayers = [];
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap contributors" }).addTo(map);
+
+    // Base Layers (CalTopo Parity with CORS for canvas export)
+    const baseLayers = {
+      osm: L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        maxNativeZoom: 18,
+        keepBuffer: 8,
+        updateWhenIdle: false,
+        crossOrigin: "anonymous",
+        attribution: "&copy; <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a> contributors"
+      }),
+      esri_dark: L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}", {
+        maxZoom: 19,
+        maxNativeZoom: 16,
+        keepBuffer: 8,
+        updateWhenIdle: false,
+        crossOrigin: "anonymous",
+        attribution: "Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ"
+      }),
+      opentopo: L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        maxNativeZoom: 17,
+        keepBuffer: 8,
+        updateWhenIdle: false,
+        crossOrigin: "anonymous",
+        attribution: "Map data: &copy; OSM contributors, SRTM | Style: &copy; OpenTopoMap (CC-BY-SA)"
+      }),
+      satellite: L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+        maxZoom: 19,
+        maxNativeZoom: 18,
+        keepBuffer: 8,
+        updateWhenIdle: false,
+        crossOrigin: "anonymous",
+        attribution: "Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community"
+      }),
+      usgs: L.tileLayer("https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}", {
+        maxZoom: 19,
+        maxNativeZoom: 16,
+        keepBuffer: 8,
+        updateWhenIdle: false,
+        crossOrigin: "anonymous",
+        attribution: "&copy; USGS The National Map"
+      })
+    };
+    let activeBaseLayer = baseLayers.osm;
+    activeBaseLayer.addTo(map);
+
+    // Scale Control (CalTopo Parity)
+    L.control.scale({ imperial: true, metric: true, position: "bottomleft" }).addTo(map);
+
+    // Live Coordinates Display (CalTopo Parity)
+    const coordsEl = document.getElementById("coordsDisplay");
+    map.on("mousemove", (e) => {
+      const lat = e.latlng.lat;
+      const lng = e.latlng.lng;
+      const latDir = lat >= 0 ? "N" : "S";
+      const lngDir = lng >= 0 ? "E" : "W";
+      coordsEl.textContent = `${Math.abs(lat).toFixed(5)}°${latDir}, ${Math.abs(lng).toFixed(5)}°${lngDir} | Zoom ${map.getZoom()}`;
+    });
+
     map.setView([37.35, -122.15], 10);
+
+    // ==========================================================================
+    // Theme Management (Dark Mode & Persistence)
+    // ==========================================================================
+    const THEME_STORAGE_KEY = "caltopo_theme";
+    function getPreferredTheme() {
+      try {
+        const saved = localStorage.getItem(THEME_STORAGE_KEY);
+        if (saved === "dark" || saved === "light") return saved;
+      } catch (_) {}
+      if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+        return "dark";
+      }
+      return "light";
+    }
+
+    function applyTheme(theme, updateBaseLayer = true) {
+      const isDark = theme === "dark";
+      document.body.classList.toggle("dark-mode", isDark);
+      document.documentElement.setAttribute("data-theme", theme);
+
+      const buttons = [document.getElementById("themeToggle"), document.getElementById("themeToggleLoader")];
+      for (const btn of buttons) {
+        if (!btn) continue;
+        const icon = btn.querySelector(".theme-icon");
+        const text = btn.querySelector(".theme-text");
+        if (icon) icon.textContent = isDark ? "☀️" : "🌙";
+        if (text) text.textContent = isDark ? "Light" : "Dark";
+        btn.title = isDark ? "Switch to Light Mode (D)" : "Switch to Dark Mode (D)";
+        btn.setAttribute("aria-label", isDark ? "Switch to light mode" : "Switch to dark mode");
+      }
+
+      if (updateBaseLayer && typeof baseLayers !== "undefined" && typeof activeBaseLayer !== "undefined") {
+        const baseLayerSelect = document.getElementById("baseLayer");
+        if (isDark && baseLayers.esri_dark && activeBaseLayer === baseLayers.osm) {
+          map.removeLayer(activeBaseLayer);
+          activeBaseLayer = baseLayers.esri_dark;
+          activeBaseLayer.addTo(map);
+          if (baseLayerSelect) baseLayerSelect.value = "esri_dark";
+        } else if (!isDark && baseLayers.osm && activeBaseLayer === baseLayers.esri_dark) {
+          map.removeLayer(activeBaseLayer);
+          activeBaseLayer = baseLayers.osm;
+          activeBaseLayer.addTo(map);
+          if (baseLayerSelect) baseLayerSelect.value = "osm";
+        }
+      }
+    }
+
+    function toggleTheme() {
+      const isDark = document.body.classList.contains("dark-mode");
+      const next = isDark ? "light" : "dark";
+      try { localStorage.setItem(THEME_STORAGE_KEY, next); } catch (_) {}
+      applyTheme(next, true);
+    }
+    window.toggleTheme = toggleTheme;
+    window.applyTheme = applyTheme;
+    window.getPreferredTheme = getPreferredTheme;
+
+    function initTheme() {
+      const theme = getPreferredTheme();
+      applyTheme(theme, true);
+
+      const toggleBtn = document.getElementById("themeToggle");
+      if (toggleBtn) toggleBtn.onclick = toggleTheme;
+      const loaderBtn = document.getElementById("themeToggleLoader");
+      if (loaderBtn) loaderBtn.onclick = toggleTheme;
+
+      if (window.matchMedia) {
+        window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", e => {
+          let hasSaved = false;
+          try { hasSaved = Boolean(localStorage.getItem(THEME_STORAGE_KEY)); } catch (_) {}
+          if (!hasSaved) {
+            applyTheme(e.matches ? "dark" : "light", true);
+          }
+        });
+      }
+    }
+    initTheme();
+
     const API_BASE = window.PLAYBACK_API_BASE || "";
     const params = new URLSearchParams(location.search);
     if (params.get("map")) document.getElementById("mapInput").value = params.get("map");
+
     document.getElementById("loadForm").addEventListener("submit", event => { event.preventDefault(); loadFromInput(); });
     document.getElementById("load").onclick = event => { event.preventDefault(); loadFromInput(); };
     document.getElementById("mapInput").addEventListener("keydown", event => { if (event.key === "Enter") loadFromInput(); });
+    window.addEventListener("keydown", event => {
+      const tag = document.activeElement ? document.activeElement.tagName : "";
+      if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+      if (event.code === "KeyD" && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        event.preventDefault();
+        toggleTheme();
+      }
+    });
     window.loadFromInput = loadFromInput;
+    window.loadDemo = function(id) {
+      document.getElementById("mapInput").value = id;
+      loadFromInput();
+    };
+
     if (params.get("map")) {
       document.getElementById("loading").classList.add("active");
       document.getElementById("loadingText").textContent = "Auto-loading CalTopo tracks...";
       setTimeout(loadFromInput, 250);
     }
+
     async function loadFromInput() {
       const input = document.getElementById("mapInput").value.trim();
       const error = document.getElementById("error");
@@ -193,6 +1453,7 @@
         loadButton.textContent = "Load";
       }
     }
+
     function startPlayback(data) {
       if (!data || !Array.isArray(data.tracks) || data.tracks.length === 0) {
         throw new Error("No replayable timestamped tracks were found on this map.");
@@ -200,22 +1461,214 @@
       if (!data.bounds || !Number.isFinite(data.bounds.minLat) || !Number.isFinite(data.bounds.minLng) || !Number.isFinite(data.bounds.maxLat) || !Number.isFinite(data.bounds.maxLng)) {
         throw new Error("The map returned tracks, but their map bounds were invalid.");
       }
+
       playbackLayers.forEach(layer => map.removeLayer(layer));
       playbackLayers = [];
       map.fitBounds(L.latLngBounds([data.bounds.minLat, data.bounds.minLng], [data.bounds.maxLat, data.bounds.maxLng]).pad(.08));
+
+      // Calculate track distances if not provided by server
+      for (const track of data.tracks) {
+        if (!track.distanceMiles) {
+          let meters = 0;
+          for (let i = 1; i < track.points.length; i++) {
+            meters += dist(track.points[i - 1], track.points[i]);
+          }
+          track.distanceMeters = Math.round(meters);
+          track.distanceMiles = Number((meters / 1609.344).toFixed(2));
+        }
+      }
+
       const visible = new Set(data.tracks.map(t => t.id));
       const markerGroupsVisible = new Set((data.markerGroups || []).map(group => group.name));
       const layers = new Map();
       const markerLayers = new Map();
-      const slider = document.getElementById("slider"), playButton = document.getElementById("play"), speed = document.getElementById("speed"), stale = document.getElementById("stale"), mode = document.getElementById("mode"), range = document.getElementById("range"), timeEl = document.getElementById("time"), metaEl = document.getElementById("meta"), trackList = document.getElementById("trackList"), markerSection = document.getElementById("markerSection"), markerList = document.getElementById("markerList"), markersToggle = document.getElementById("markersToggle"), listToggle = document.getElementById("listToggle");
+
+      // High-Resolution Export Tile & Marker Icon Caches (Declared early for setupMarkers)
+      const exportTileCache = new Map();
+      const exportMarkerIconCache = new Map();
+
+      function getMarkerIconSrc(marker) {
+        if (marker.iconRetinaDataUrl) return marker.iconRetinaDataUrl;
+        if (marker.iconDataUrl) return marker.iconDataUrl;
+        if (marker.iconRetinaUrl) return marker.iconRetinaUrl;
+        if (marker.iconUrl) return marker.iconUrl;
+        return null;
+      }
+
+      function preloadExportMarkerIcons(markers) {
+        for (const m of markers || []) {
+          const src = getMarkerIconSrc(m);
+          if (src && !exportMarkerIconCache.has(src)) {
+            const img = new Image();
+            if (!src.startsWith("data:")) img.crossOrigin = "anonymous";
+            img.src = src;
+            exportMarkerIconCache.set(src, img);
+          }
+        }
+      }
+
+      function drawFallbackMarker(ctx, x, y, marker, markerScale) {
+        const markerColor = marker.color || "#00CD00";
+        ctx.save();
+        ctx.translate(x, y);
+        if (marker.symbol === "point") {
+          const r = 5.5 * markerScale;
+          ctx.beginPath();
+          ctx.arc(0, 0, r + 1.8, 0, Math.PI * 2);
+          ctx.fillStyle = "#ffffff";
+          ctx.fill();
+          ctx.beginPath();
+          ctx.arc(0, 0, r, 0, Math.PI * 2);
+          ctx.fillStyle = markerColor;
+          ctx.fill();
+        } else if (marker.symbol === "cp") {
+          const r = 7 * markerScale;
+          ctx.beginPath();
+          ctx.arc(0, 0, r + 2, 0, Math.PI * 2);
+          ctx.fillStyle = "#ffffff";
+          ctx.fill();
+          ctx.beginPath();
+          ctx.arc(0, 0, r, 0, Math.PI * 2);
+          ctx.fillStyle = markerColor;
+          ctx.fill();
+          ctx.beginPath();
+          ctx.arc(0, 0, r * 0.45, 0, Math.PI * 2);
+          ctx.fillStyle = "#ffffff";
+          ctx.fill();
+        } else {
+          // Authentic CalTopo Map Pin
+          const pinH = 22 * markerScale;
+          const pinR = 7.5 * markerScale;
+          const tipY = 0;
+          const headY = -pinH + pinR;
+
+          // Drop shadow
+          ctx.beginPath();
+          ctx.ellipse(0, 1, pinR * 0.7, pinR * 0.35, 0, 0, Math.PI * 2);
+          ctx.fillStyle = "rgba(15, 23, 42, 0.45)";
+          ctx.fill();
+
+          // Pin outline and body
+          ctx.beginPath();
+          ctx.arc(0, headY, pinR, Math.PI * 0.75, Math.PI * 2.25, false);
+          ctx.lineTo(0, tipY);
+          ctx.closePath();
+
+          ctx.lineWidth = 3 * markerScale;
+          ctx.strokeStyle = "#ffffff";
+          ctx.stroke();
+
+          ctx.fillStyle = markerColor;
+          ctx.fill();
+
+          // Center Dot
+          ctx.beginPath();
+          ctx.arc(0, headY, pinR * 0.42, 0, Math.PI * 2);
+          ctx.fillStyle = "#ffffff";
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+
+      // UI Controls
+      const slider = document.getElementById("slider");
+      const playButton = document.getElementById("play");
+      const stepBackButton = document.getElementById("stepBack");
+      const stepForwardButton = document.getElementById("stepForward");
+      const speed = document.getElementById("speed");
+      const stale = document.getElementById("stale");
+      const mode = document.getElementById("mode");
+      const labelsModeSelect = document.getElementById("labelsMode");
+      const baseLayerSelect = document.getElementById("baseLayer");
+      const range = document.getElementById("range");
+      const activeOnly = document.getElementById("activeOnly");
+      const timeEl = document.getElementById("time");
+      const tzToggle = document.getElementById("tzToggle");
+      const metaEl = document.getElementById("meta");
+      const trackList = document.getElementById("trackList");
+      const markerSection = document.getElementById("markerSection");
+      const markerList = document.getElementById("markerList");
+      const markersToggle = document.getElementById("markersToggle");
+      const listToggle = document.getElementById("listToggle");
+      const themeToggle = document.getElementById("themeToggle");
+
+      if (themeToggle) themeToggle.onclick = toggleTheme;
+      if (baseLayerSelect && activeBaseLayer === baseLayers.esri_dark) {
+        baseLayerSelect.value = "esri_dark";
+      }
+
       trackList.innerHTML = "";
       markerList.innerHTML = "";
+
+      let trackStart = Infinity, trackEnd = -Infinity;
+      for (const track of data.tracks || []) {
+        for (const pt of track.points) {
+          if (pt.time < trackStart) trackStart = pt.time;
+          if (pt.time > trackEnd) trackEnd = pt.time;
+        }
+      }
+
       const windows = buildWindows(data);
       let activeWindow = windows.defaultIndex;
       let viewStart = windows.items[activeWindow].start;
       let viewEnd = windows.items[activeWindow].end;
       let duration = Math.max(1, viewEnd - viewStart);
-      let current = viewStart, playing = false, previousFrame = null;
+
+      // Playback State: Default labelsMode to "all" (names show always by default)
+      let current = (activeOnly && activeOnly.checked && trackStart < Infinity && trackStart >= viewStart && trackStart <= viewEnd)
+        ? trackStart
+        : viewStart;
+      let playing = false;
+      let previousFrame = null;
+      let animationFrameId = null;
+      let isScrubbing = false;
+      let wasPlayingBeforeScrub = false;
+      let utcMode = false;
+      let labelsMode = "all";
+      labelsModeSelect.value = "all";
+
+      if (activeOnly) {
+        activeOnly.onchange = () => {
+          if (activeOnly.checked && trackStart < Infinity && current < trackStart - 3000 && trackStart <= viewEnd) {
+            update(trackStart);
+          }
+        };
+      }
+
+      let selectedTrackId = null;
+
+      function selectTrack(trackId, focusMap = false) {
+        selectedTrackId = trackId;
+        document.querySelectorAll(".track-row").forEach(r => {
+          r.classList.toggle("selected", r.id === "track-row-" + trackId);
+        });
+        const exportFollowTeam = document.getElementById("exportFollowTeam");
+        if (exportFollowTeam && exportFollowTeam.value !== trackId) {
+          exportFollowTeam.value = trackId;
+        }
+        for (const [id, lyr] of layers.entries()) {
+          if (id === trackId) {
+            lyr.marker.setZIndexOffset(3000);
+            lyr.line.setStyle({ weight: 5.5, opacity: 1 });
+          } else {
+            lyr.marker.setZIndexOffset(100);
+            lyr.line.setStyle({ weight: 3, opacity: 0.78 });
+          }
+        }
+        if (focusMap) {
+          const track = data.tracks.find(t => t.id === trackId);
+          const point = track ? interp(track, current) : null;
+          if (point) {
+            const pLat = Array.isArray(point) ? point[0] : (point.lat ?? point[0]);
+            const pLng = Array.isArray(point) ? point[1] : (point.lng ?? point[1]);
+            map.panTo([pLat, pLng], { animate: true, duration: 0.4 });
+          }
+        }
+        if (exportModal && !exportModal.hidden && exportModal.style.display !== "none") {
+          updateExportPreview();
+        }
+      }
+
       range.innerHTML = "";
       windows.items.forEach((windowItem, index) => {
         const option = document.createElement("option");
@@ -224,31 +1677,129 @@
         range.append(option);
       });
       range.value = String(activeWindow);
+
+      // Build Track Layers & Rows
       for (const track of data.tracks) {
-        const layer = { line: L.polyline([], { color: track.color, weight: 3, opacity: .78 }).addTo(map), marker: L.marker([track.points[0].lat, track.points[0].lng], { icon: markerIcon(track, 1, 0), keyboard: false }).addTo(map), row: null };
-        playbackLayers.push(layer.line, layer.marker);
-        layer.marker.bindTooltip(track.title, { permanent: true, direction: "top", offset: [0,-7], className: "playback-label", opacity: .95 });
+        const line = L.polyline([], { color: track.color, weight: 3, opacity: .78 }).addTo(map);
+        const marker = L.marker([track.points[0].lat, track.points[0].lng], {
+          icon: markerIcon(track, 1, null),
+          keyboard: false,
+          zIndexOffset: 100
+        }).addTo(map);
+
+        playbackLayers.push(line, marker);
+
+        // Tooltip for track: Permanent by default
+        marker.bindTooltip(track.title, {
+          permanent: true,
+          direction: "top",
+          offset: [0, -14],
+          className: "playback-label",
+          opacity: 0.95
+        });
+
+        const layer = { line, marker, row: null, track };
         layers.set(track.id, layer);
-        const row = document.createElement("label");
-        row.className = "track";
-        row.title = track.title;
-        row.innerHTML = '<input type="checkbox" checked><span class="swatch"></span><span class="name"></span><span class="count"></span>';
-        row.querySelector(".swatch").style.background = track.color;
-        row.querySelector(".name").textContent = track.title;
-        row.querySelector(".count").textContent = track.pointCount.toLocaleString();
-        row.querySelector("input").onchange = e => { e.target.checked ? visible.add(track.id) : visible.delete(track.id); update(current); };
+
+        // Track Inspection Popup on Click & Team Selection
+        line.on("click", (e) => {
+          selectTrack(track.id, false);
+          const distStr = track.distanceMiles ? `${track.distanceMiles} mi (${(track.distanceMeters / 1000).toFixed(1)} km)` : "N/A";
+          const durMinutes = Math.round((track.end - track.start) / 60000);
+          const durStr = durMinutes >= 60 ? `${Math.floor(durMinutes / 60)}h ${durMinutes % 60}m` : `${durMinutes}m`;
+          const content = `
+            <div class="marker-popup">
+              <h2>${escapeHtml(track.title)}</h2>
+              ${track.folderTitle ? `<div class="folder">${escapeHtml(track.folderTitle)}</div>` : ''}
+              <div class="desc">
+                <div><strong>Distance:</strong> ${distStr}</div>
+                <div><strong>Duration:</strong> ${durStr}</div>
+                <div><strong>Recorded Points:</strong> ${track.pointCount.toLocaleString()}</div>
+                <div><strong>Time:</strong> ${formatTimestamp(track.start, utcMode)} &ndash; ${formatTimestamp(track.end, utcMode)}</div>
+              </div>
+            </div>
+          `;
+          L.popup().setLatLng(e.latlng).setContent(content).openOn(map);
+        });
+
+        marker.on("click", () => {
+          selectTrack(track.id, false);
+        });
+
+        // Hover events for track marker
+        marker.on("mouseover", () => {
+          marker.setZIndexOffset(3000);
+          line.setStyle({ weight: 5, opacity: 1 });
+          if (row) row.classList.add("hovered");
+        });
+        marker.on("mouseout", () => {
+          if (selectedTrackId !== track.id) {
+            marker.setZIndexOffset(100);
+            line.setStyle({ weight: 3, opacity: 0.78 });
+          }
+          if (row) row.classList.remove("hovered");
+        });
+
+        // Sidebar Row: Clean separate hitboxes for checkbox vs team selection
+        const row = document.createElement("div");
+        row.className = "track-row";
+        row.id = "track-row-" + track.id;
+        row.style.setProperty("--track-color", track.color);
+        const distBadge = track.distanceMiles ? `<span class="dist">${track.distanceMiles} mi</span>` : '';
+        row.innerHTML = `
+          <input type="checkbox" class="track-check" checked title="Toggle visibility of ${escapeHtml(track.title)}">
+          <div class="track-btn" title="Click to select and focus ${escapeHtml(track.title)}">
+            <span class="swatch" style="background: ${track.color}"></span>
+            <span class="name">${escapeHtml(track.title)}</span>
+            ${distBadge}
+            <span class="count">${track.pointCount.toLocaleString()} pts</span>
+          </div>
+        `;
+
+        // Checkbox only toggles visibility (no row selection conflict)
+        const check = row.querySelector(".track-check");
+        check.onchange = e => {
+          e.stopPropagation();
+          e.target.checked ? visible.add(track.id) : visible.delete(track.id);
+          update(current);
+        };
+
+        // Track button selects and highlights team in its own color
+        const selectBtn = row.querySelector(".track-btn");
+        selectBtn.onclick = () => {
+          selectTrack(track.id, true);
+        };
+
+        // Hover events on sidebar row to highlight track on map
+        row.addEventListener("mouseenter", () => {
+          marker.setZIndexOffset(3000);
+          line.setStyle({ weight: 5, opacity: 1 });
+          row.classList.add("hovered");
+        });
+        row.addEventListener("mouseleave", () => {
+          if (selectedTrackId !== track.id) {
+            marker.setZIndexOffset(100);
+            line.setStyle({ weight: 3, opacity: 0.78 });
+          }
+          row.classList.remove("hovered");
+        });
+
         layer.row = row;
         trackList.append(row);
       }
+
       setupMarkers(data.markers || []);
+
       function refreshMeta() {
         const windowItem = windows.items[activeWindow];
         const markerText = (data.markers || []).length ? ", " + data.markers.length.toLocaleString() + " markers" : "";
-        metaEl.textContent = data.tracks.length.toLocaleString() + " tracks" + markerText + ", " + new Date(viewStart).toLocaleString() + " to " + new Date(viewEnd).toLocaleString() + (windowItem.key === "all" ? "" : " (" + windowItem.label + ")");
+        metaEl.textContent = data.tracks.length.toLocaleString() + " tracks" + markerText + ", " + formatTimestamp(viewStart, utcMode) + " to " + formatTimestamp(viewEnd, utcMode) + (windowItem.key === "all" ? "" : " (" + windowItem.label + ")");
       }
+
       function setupMarkers(markers) {
         markerSection.hidden = markers.length === 0;
         markersToggle.checked = true;
+        preloadExportMarkerIcons(markers);
         for (const group of data.markerGroups || []) {
           const row = document.createElement("label");
           row.className = "marker-row";
@@ -259,19 +1810,34 @@
           row.querySelector(".marker-swatch").textContent = markerCategoryShort(group.name);
           row.querySelector(".name").textContent = group.name;
           row.querySelector(".count").textContent = group.count.toLocaleString();
-          row.querySelector("input").onchange = e => { e.target.checked ? markerGroupsVisible.add(group.name) : markerGroupsVisible.delete(group.name); updateMarkers(); };
+          row.querySelector("input").onchange = e => {
+            e.target.checked ? markerGroupsVisible.add(group.name) : markerGroupsVisible.delete(group.name);
+            updateMarkers();
+          };
           markerList.append(row);
         }
         for (const marker of markers) {
-          const layer = L.marker([marker.lat, marker.lng], { icon: staticMarkerIcon(marker), alt: marker.title, title: marker.title, keyboard: false });
+          const layer = L.marker([marker.lat, marker.lng], {
+            icon: staticMarkerIcon(marker),
+            alt: marker.title,
+            title: marker.title,
+            keyboard: false
+          });
           playbackLayers.push(layer);
           layer.bindPopup(markerPopup(marker));
-          layer.bindTooltip(marker.title, { permanent: false, direction: "top", offset: [0,-12], className: "marker-label", opacity: .95 });
+          layer.bindTooltip(marker.title, {
+            permanent: Boolean(marker.labelVisible && labelsMode !== "none"),
+            direction: "top",
+            offset: [0, -12],
+            className: "marker-label",
+            opacity: .95
+          });
           markerLayers.set(marker.id, { marker, layer });
         }
         markersToggle.onchange = updateMarkers;
         updateMarkers(current);
       }
+
       function updateMarkers(at = current) {
         const masterVisible = markersToggle.checked;
         for (const { marker, layer } of markerLayers.values()) {
@@ -281,6 +1847,7 @@
           if (!shouldShow && map.hasLayer(layer)) layer.removeFrom(map);
         }
       }
+
       function pointAt(track, at) {
         const p = track.points;
         if (at < p[0].time) return { previous: null, current: null, next: p[0] };
@@ -293,8 +1860,21 @@
         return { previous: left, current: { lat: left.lat + (right.lat - left.lat) * r, lng: left.lng + (right.lng - left.lng) * r, time: at }, next: right };
       }
       const interp = (track, at) => pointAt(track, at).current;
-      function lowerBound(points, at) { let low = 0, high = points.length; while (low < high) { const mid = (low + high) >> 1; if (points[mid].time < at) low = mid + 1; else high = mid; } return low; }
-      function hasWindowPoint(track) { const index = lowerBound(track.points, viewStart); return index < track.points.length && track.points[index].time <= viewEnd; }
+
+      function lowerBound(points, at) {
+        let low = 0, high = points.length;
+        while (low < high) {
+          const mid = (low + high) >> 1;
+          if (points[mid].time < at) low = mid + 1;
+          else high = mid;
+        }
+        return low;
+      }
+      function hasWindowPoint(track) {
+        const index = lowerBound(track.points, viewStart);
+        return index < track.points.length && track.points[index].time <= viewEnd;
+      }
+
       function fitWindowBounds() {
         const bounds = [];
         for (const track of data.tracks) {
@@ -304,33 +1884,1691 @@
         }
         if (bounds.length) map.fitBounds(L.latLngBounds(bounds).pad(.08));
       }
-      const dist = (a,b) => { const R=6371000, p1=a.lat*Math.PI/180, p2=b.lat*Math.PI/180, d1=(b.lat-a.lat)*Math.PI/180, d2=(b.lng-a.lng)*Math.PI/180, x=Math.sin(d1/2)**2+Math.cos(p1)*Math.cos(p2)*Math.sin(d2/2)**2; return R*2*Math.atan2(Math.sqrt(x), Math.sqrt(1-x)); };
-      function heading(track, at) { const {previous,current,next}=pointAt(track, at); if (!current) return null; const from=previous||current, to=previous?current:next; if (!to) return null; const seconds=Math.max(1, Math.abs((to.time||at)-(from.time||at))/1000), meters=dist(from,to); if (meters < 8 || meters/seconds < .5) return null; const a=from.lat*Math.PI/180, b=to.lat*Math.PI/180, d=(to.lng-from.lng)*Math.PI/180, y=Math.sin(d)*Math.cos(b), x=Math.cos(a)*Math.sin(b)-Math.sin(a)*Math.cos(b)*Math.cos(d); return (Math.atan2(y,x)*180/Math.PI+360)%360; }
-      function markerIcon(track, opacity, h) { if (!Number.isFinite(h)) return L.divIcon({ className:"", iconSize:[18,18], iconAnchor:[9,9], html:'<div style="width:18px;height:18px;opacity:'+opacity+'"><svg width="18" height="18" viewBox="0 0 18 18"><circle cx="9" cy="9" r="6" fill="'+track.color+'" stroke="#111" stroke-width="1.4"/></svg></div>' }); return L.divIcon({ className:"", iconSize:[24,24], iconAnchor:[12,12], html:'<div style="width:24px;height:24px;opacity:'+opacity+';transform:rotate('+h+'deg)"><svg width="24" height="24" viewBox="0 0 24 24"><path d="M12 2 19 21 12 17 5 21Z" fill="'+track.color+'" stroke="#111" stroke-width="1.4"/></svg></div>' }); }
-      function pointsUntil(track, at) { const out=[]; for (const point of track.points) { if (point.time < viewStart) continue; if (point.time <= at) out.push([point.lat, point.lng]); else break; } const p=interp(track, at); if (p && at >= viewStart) out.push([p.lat,p.lng]); return out; }
-      function update(at) {
+
+      const dist = (a,b) => {
+        const R = 6371000, p1 = a.lat*Math.PI/180, p2 = b.lat*Math.PI/180, d1 = (b.lat-a.lat)*Math.PI/180, d2 = (b.lng-a.lng)*Math.PI/180;
+        const x = Math.sin(d1/2)**2 + Math.cos(p1)*Math.cos(p2)*Math.sin(d2/2)**2;
+        return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1-x));
+      };
+
+      // Smooth heading with hysteresis: prevents flickering between angles or on/off
+      function heading(track, at) {
+        const { previous, current, next } = pointAt(track, at);
+        if (!current) return track.lastHeading || null;
+        const from = previous || current, to = previous ? current : next;
+        if (!to) return track.lastHeading || null;
+        const seconds = Math.max(0.1, Math.abs((to.time || at) - (from.time || at)) / 1000);
+        const meters = dist(from, to);
+        if (meters >= 4 && (meters / seconds) >= 0.2) {
+          const a = from.lat * Math.PI / 180, b = to.lat * Math.PI / 180, d = (to.lng - from.lng) * Math.PI / 180;
+          const y = Math.sin(d) * Math.cos(b);
+          const x = Math.cos(a) * Math.sin(b) - Math.sin(a) * Math.cos(b) * Math.cos(d);
+          track.lastHeading = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+          return track.lastHeading;
+        }
+        return track.lastHeading || null;
+      }
+
+      // Consistent Navigation Puck: Always a circle, with smooth directional notch when moving!
+      // Never abruptly switches shapes from circle to triangle or resizes!
+      function markerIcon(track, opacity, h) {
+        const hasHeading = Number.isFinite(h);
+        const rotationAttr = hasHeading ? ` transform="rotate(${h} 12 12)"` : '';
+        const pointer = `<polygon class="puck-pointer" points="12,1 15.5,7 12,5.2 8.5,7" fill="${track.color}" stroke="#ffffff" stroke-width="1.2" stroke-linejoin="round" style="display:${hasHeading ? 'block' : 'none'};"/>`;
+
+        return L.divIcon({
+          className: "",
+          iconSize: [24, 24],
+          iconAnchor: [12, 12],
+          html: `
+            <div class="puck-wrapper" style="width:24px;height:24px;opacity:${opacity};display:grid;place-items:center;">
+              <svg width="24" height="24" viewBox="0 0 24 24">
+                <g class="puck-group"${rotationAttr}>
+                  ${pointer}
+                  <!-- Outer contrast ring & solid circle puck -->
+                  <circle cx="12" cy="12" r="6.8" fill="${track.color}" stroke="#ffffff" stroke-width="2.2"/>
+                  <!-- Center high-contrast dot -->
+                  <circle cx="12" cy="12" r="2.2" fill="#ffffff" opacity="0.92"/>
+                </g>
+              </svg>
+            </div>
+          `
+        });
+      }
+
+      function pointsUntil(track, at) {
+        if (!track._cachedLatLngs) {
+          track._cachedLatLngs = track.points.map(p => [p.lat, p.lng]);
+        }
+        const startIdx = lowerBound(track.points, viewStart);
+        const endIdx = lowerBound(track.points, at);
+        const out = track._cachedLatLngs.slice(startIdx, endIdx);
+        const p = interp(track, at);
+        if (p && at >= viewStart) out.push([p.lat, p.lng]);
+        return out;
+      }
+
+      function allWindowPoints(track) {
+        if (!track._cachedLatLngs) {
+          track._cachedLatLngs = track.points.map(p => [p.lat, p.lng]);
+        }
+        const startIdx = lowerBound(track.points, viewStart);
+        const endIdx = lowerBound(track.points, viewEnd + 1);
+        return track._cachedLatLngs.slice(startIdx, endIdx);
+      }
+
+      function formatTimestamp(timestamp, utc) {
+        const date = new Date(timestamp);
+        if (utc) {
+          return date.toUTCString().replace("GMT", "UTC");
+        }
+        return date.toLocaleString();
+      }
+
+      function update(at, updateSlider = true) {
         current = Math.max(viewStart, Math.min(viewEnd, at));
-        slider.value = duration > 0 ? Math.round(((current - viewStart) / duration) * 1000) : 0;
-        timeEl.textContent = new Date(current).toLocaleString();
+        if (updateSlider && !isScrubbing) {
+          slider.value = duration > 0 ? Math.round(((current - viewStart) / duration) * 1000) : 0;
+        }
+        timeEl.textContent = formatTimestamp(current, utcMode);
+
         for (const track of data.tracks) {
           const activeInWindow = hasWindowPoint(track);
-          const layer = layers.get(track.id), point = visible.has(track.id) && activeInWindow ? interp(track, current) : null, staleMs = Number(stale.value), age = point ? current - point.time : Infinity, fadeStart = staleMs * .7, opacity = staleMs > 0 && age > fadeStart ? Math.max(0, 1 - ((age - fadeStart) / Math.max(1, staleMs - fadeStart))) : 1;
+          const layer = layers.get(track.id);
+          const point = visible.has(track.id) && activeInWindow ? interp(track, current) : null;
+          const staleMs = Number(stale.value);
+          const age = point ? current - point.time : Infinity;
+          const fadeStart = staleMs * .7;
+          const opacity = staleMs > 0 && age > fadeStart ? Math.max(0, 1 - ((age - fadeStart) / Math.max(1, staleMs - fadeStart))) : 1;
+
           layer.row.hidden = !activeInWindow;
-          if (!point || opacity <= 0) { layer.line.setLatLngs([]); layer.marker.setOpacity(0); layer.marker.closeTooltip(); continue; }
-          layer.line.setLatLngs(mode.value === "trail" ? pointsUntil(track, current) : []);
+          if (!point || opacity <= 0) {
+            layer.line.setLatLngs([]);
+            layer.marker.setOpacity(0);
+            layer.marker.closeTooltip();
+            continue;
+          }
+
+          // Polyline Mode
+          if (mode.value === "trail") {
+            layer.line.setLatLngs(pointsUntil(track, current));
+          } else if (mode.value === "full") {
+            layer.line.setLatLngs(allWindowPoints(track));
+          } else {
+            layer.line.setLatLngs([]);
+          }
+
           layer.line.setStyle({ opacity: .78 * opacity });
           layer.marker.setLatLng([point.lat, point.lng]);
           layer.marker.setOpacity(opacity);
-          layer.marker.setIcon(markerIcon(track, opacity, heading(track, current)));
-          opacity > .45 ? layer.marker.openTooltip() : layer.marker.closeTooltip();
+
+          // Fast GPU-accelerated rotation update: mutate SVG transform directly without DOM reconstruction
+          const h = heading(track, current);
+          const el = layer.marker.getElement();
+          if (el) {
+            if (!layer._puckGroup) layer._puckGroup = el.querySelector(".puck-group");
+            if (!layer._puckPointer) layer._puckPointer = el.querySelector(".puck-pointer");
+            if (layer._puckGroup) {
+              if (Number.isFinite(h)) {
+                if (layer._puckPointer) layer._puckPointer.style.display = "block";
+                layer._puckGroup.setAttribute("transform", `rotate(${h} 12 12)`);
+              } else {
+                if (layer._puckPointer) layer._puckPointer.style.display = "none";
+                layer._puckGroup.removeAttribute("transform");
+              }
+            }
+          } else {
+            layer.marker.setIcon(markerIcon(track, opacity, h));
+          }
+
+          // Labels Mode Handling: "all" keeps names shown by default!
+          if (labelsMode === "all") {
+            opacity > .45 ? layer.marker.openTooltip() : layer.marker.closeTooltip();
+          } else if (labelsMode === "none") {
+            layer.marker.closeTooltip();
+          }
         }
+
         updateMarkers(current);
       }
-      function frame(ts) { if (!playing) return; if (previousFrame == null) previousFrame = ts; const elapsed = ts - previousFrame; previousFrame = ts; const next = current + elapsed * Number(speed.value); if (next >= viewEnd) { playing = false; playButton.textContent = "Play"; update(viewEnd); return; } update(next); requestAnimationFrame(frame); }
-      playButton.onclick = () => { playing = !playing; playButton.textContent = playing ? "Pause" : "Play"; previousFrame = null; if (playing) { if (current >= viewEnd) update(viewStart); requestAnimationFrame(frame); } };
-      slider.oninput = () => update(viewStart + duration * (Number(slider.value) / 1000));
+
+      // Dynamic SVG Play / Pause / Replay Transport States
+      const playIcon = document.getElementById("playIcon");
+      const playLabel = document.getElementById("playLabel");
+      const loopToggle = document.getElementById("loopToggle");
+      let loopPlayback = false;
+
+      function showHud() {
+        // Disabled per user preference: no on-screen popups for pause/play/loop/jump
+      }
+
+      function setButtonPlayState() {
+        playButton.classList.remove("playing", "finished");
+        playButton.setAttribute("aria-label", "Play playback");
+        if (playIcon) playIcon.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><polygon points="6,4 20,12 6,20"/></svg>';
+        if (playLabel) playLabel.textContent = "Play";
+      }
+
+      function setButtonPauseState() {
+        playButton.classList.add("playing");
+        playButton.classList.remove("finished");
+        playButton.setAttribute("aria-label", "Pause playback");
+        if (playIcon) playIcon.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1.5"/><rect x="14" y="4" width="4" height="16" rx="1.5"/></svg>';
+        if (playLabel) playLabel.textContent = "Pause";
+      }
+
+      function setButtonReplayState() {
+        playButton.classList.remove("playing");
+        playButton.classList.add("finished");
+        playButton.setAttribute("aria-label", "Replay playback");
+        if (playIcon) playIcon.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46A7.93 7.93 0 0020 13c0-4.42-3.58-8-8-8zm-6.3 3.74L4.24 9.2A7.93 7.93 0 004 13c0 4.42 3.58 8 8 8v-3c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8z"/></svg>';
+        if (playLabel) playLabel.textContent = "Replay";
+      }
+
+      // Safe Playback Control Helpers
+      function startPlaybackLoop() {
+        if (playing) return;
+        playing = true;
+        setButtonPauseState();
+        previousFrame = null;
+        if (current >= viewEnd) update(viewStart);
+        cancelAnimationFrame(animationFrameId);
+        animationFrameId = requestAnimationFrame(frame);
+      }
+
+      function pausePlayback() {
+        playing = false;
+        if (current >= viewEnd) {
+          setButtonReplayState();
+        } else {
+          setButtonPlayState();
+        }
+        previousFrame = null;
+        cancelAnimationFrame(animationFrameId);
+      }
+
+      function frame(ts) {
+        if (!playing || isScrubbing) return;
+        if (previousFrame == null) previousFrame = ts;
+        // Clamp elapsed time to 250ms to prevent jumping forward hours when tab is backgrounded
+        const elapsed = Math.min(ts - previousFrame, 250);
+        previousFrame = ts;
+
+        let next = current + elapsed * Number(speed.value);
+
+        // Smart Active Only: automatically skip idle gaps (>5m) where no tracks are moving
+        if (activeOnly && activeOnly.checked && data.tracks.length > 0) {
+          if (next < trackStart - 3000 && trackStart <= viewEnd) {
+            next = trackStart;
+          } else {
+            let hasNearbyPoint = false;
+            let nearestFuturePoint = Infinity;
+            for (const track of data.tracks) {
+              if (!visible.has(track.id) || track.points.length === 0) continue;
+              const p0 = track.points[0].time;
+              const pN = track.points[track.points.length - 1].time;
+              if (next >= p0 && next <= pN) {
+                const idx = lowerBound(track.points, next);
+                const pt = track.points[idx];
+                if (pt && (pt.time - next) <= 300000) {
+                  hasNearbyPoint = true;
+                  break;
+                }
+                if (pt && pt.time > next) {
+                  nearestFuturePoint = Math.min(nearestFuturePoint, pt.time);
+                }
+              } else if (p0 > next) {
+                nearestFuturePoint = Math.min(nearestFuturePoint, p0);
+              }
+            }
+
+            if (!hasNearbyPoint && nearestFuturePoint < Infinity && (nearestFuturePoint - next) > 300000 && nearestFuturePoint <= viewEnd) {
+              next = nearestFuturePoint - 2000;
+            }
+          }
+        }
+
+        if (next >= viewEnd) {
+          if (loopPlayback) {
+            update(viewStart);
+            previousFrame = ts;
+            animationFrameId = requestAnimationFrame(frame);
+            return;
+          }
+          pausePlayback();
+          update(viewEnd);
+          setButtonReplayState();
+          return;
+        }
+        update(next);
+        animationFrameId = requestAnimationFrame(frame);
+      }
+
+      // Smooth, Conflict-Free Scrubbing Handlers
+      function startScrubbing() {
+        if (isScrubbing) return;
+        isScrubbing = true;
+        if (playing) {
+          wasPlayingBeforeScrub = true;
+          pausePlayback();
+        }
+      }
+
+      function onScrub(val) {
+        const target = viewStart + duration * (val / 1000);
+        update(target, false);
+      }
+
+      function stopScrubbing() {
+        if (!isScrubbing) return;
+        isScrubbing = false;
+        if (wasPlayingBeforeScrub) {
+          wasPlayingBeforeScrub = false;
+          if (current >= viewEnd) update(viewStart);
+          startPlaybackLoop();
+        }
+      }
+
+      // Timeline Scrubber Listeners
+      slider.addEventListener("pointerdown", startScrubbing);
+      slider.addEventListener("mousedown", startScrubbing);
+      slider.addEventListener("touchstart", startScrubbing, { passive: true });
+      slider.addEventListener("input", () => onScrub(Number(slider.value)));
+      window.addEventListener("pointerup", stopScrubbing);
+      window.addEventListener("mouseup", stopScrubbing);
+      window.addEventListener("touchend", stopScrubbing);
+      slider.addEventListener("change", stopScrubbing);
+
+      // Play/Pause/Replay Button Click
+      playButton.onclick = () => {
+        if (playing) {
+          pausePlayback();
+        } else {
+          if (current >= viewEnd) {
+            update(viewStart);
+          } else if (activeOnly && activeOnly.checked && trackStart < Infinity && current < trackStart - 3000 && trackStart <= viewEnd) {
+            update(trackStart);
+          }
+          startPlaybackLoop();
+        }
+      };
+
+      // Loop Toggle
+      if (loopToggle) {
+        loopToggle.onclick = () => {
+          loopPlayback = !loopPlayback;
+          loopToggle.classList.toggle("active", loopPlayback);
+        };
+      }
+
+      // Step Controls (1 minute increments)
+      stepBackButton.onclick = () => {
+        update(Math.max(viewStart, current - 60000));
+      };
+      stepForwardButton.onclick = () => {
+        update(Math.min(viewEnd, current + 60000));
+      };
+
+      // Timezone Toggle (Local vs UTC)
+      tzToggle.onclick = () => {
+        utcMode = !utcMode;
+        tzToggle.textContent = utcMode ? "UTC" : "LOCAL";
+        timeEl.textContent = formatTimestamp(current, utcMode);
+        refreshMeta();
+      };
+
+      // Tab Backgrounding & Focus Handling
+      document.addEventListener("visibilitychange", () => {
+        previousFrame = null;
+      });
+      window.addEventListener("blur", () => {
+        previousFrame = null;
+      });
+      window.addEventListener("focus", () => {
+        previousFrame = null;
+      });
+
+      // Keyboard Shortcuts (Space, L, Left, Right, Home, End)
+      window.addEventListener("keydown", (e) => {
+        const tag = document.activeElement ? document.activeElement.tagName : "";
+        if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+        if (e.code === "Space") {
+          e.preventDefault();
+          if (playing) {
+            pausePlayback();
+          } else {
+            if (current >= viewEnd) update(viewStart);
+            startPlaybackLoop();
+          }
+        } else if (e.code === "KeyL") {
+          e.preventDefault();
+          if (loopToggle) loopToggle.click();
+        } else if (e.code === "ArrowLeft") {
+          e.preventDefault();
+          const step = e.shiftKey ? 300000 : 15000;
+          update(Math.max(viewStart, current - step));
+        } else if (e.code === "ArrowRight") {
+          e.preventDefault();
+          const step = e.shiftKey ? 300000 : 15000;
+          update(Math.min(viewEnd, current + step));
+        } else if (e.code === "Home") {
+          e.preventDefault();
+          update(viewStart);
+        } else if (e.code === "End") {
+          e.preventDefault();
+          update(viewEnd);
+        } else if (e.code === "KeyD" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+          e.preventDefault();
+          toggleTheme();
+        }
+      });
+
+      // ==========================================
+      // VIDEO & GIF EXPORT PIPELINE WITH AUTO-CAM
+      // ==========================================
+      const exportOpenBtn = document.getElementById("exportOpen");
+      const exportModal = document.getElementById("exportModal");
+      const exportCloseBtn = document.getElementById("exportClose");
+      const exportCancelBtn = document.getElementById("exportCancel");
+      const exportStartBtn = document.getElementById("exportStartBtn");
+      const exportCamera = document.getElementById("exportCamera");
+      const exportFollowTeamGroup = document.getElementById("exportFollowTeamGroup");
+      const exportFollowTeam = document.getElementById("exportFollowTeam");
+      const exportCameraHint = document.getElementById("exportCameraHint");
+      const exportRes = document.getElementById("exportRes");
+      const exportDuration = document.getElementById("exportDuration");
+      const exportShowTime = document.getElementById("exportShowTime");
+      const exportShowLegend = document.getElementById("exportShowLegend");
+      const exportShowMarkerLabels = document.getElementById("exportShowMarkerLabels");
+      const exportShowLogo = document.getElementById("exportShowLogo");
+      const exportCanvas = document.getElementById("exportCanvas");
+      const exportStatusOverlay = document.getElementById("exportStatusOverlay");
+      const exportProgressText = document.getElementById("exportProgressText");
+      const exportProgressBar = document.getElementById("exportProgressBar");
+      const exportCancelRenderBtn = document.getElementById("exportCancelBtn");
+      const exportPreviewInfo = document.getElementById("exportPreviewInfo");
+      const chipVideo = document.getElementById("chipVideo");
+      const chipGif = document.getElementById("chipGif");
+
+      let exportFormat = "video";
+      let isExporting = false;
+      let exportAborted = false;
+
+      function updateCameraModeUI() {
+        const mode = exportCamera ? exportCamera.value : "static";
+        if (exportFollowTeamGroup) {
+          exportFollowTeamGroup.style.display = mode === "follow" ? "flex" : "none";
+        }
+        if (exportCameraHint) {
+          if (mode === "follow") {
+            exportCameraHint.textContent = "Camera will lock onto and follow the chosen team throughout the replay.";
+          } else if (mode === "autocam") {
+            exportCameraHint.textContent = "Cinematic Auto-Cam dynamically pans and zooms to frame all active moving teams.";
+          } else {
+            exportCameraHint.textContent = '"Match Map View" exports the exact framing and zoom shown on the interactive map.';
+          }
+        }
+      }
+
+      function populateExportTeams() {
+        if (!exportFollowTeam || !data || !data.tracks) return;
+        exportFollowTeam.innerHTML = "";
+        for (const track of data.tracks) {
+          const opt = document.createElement("option");
+          opt.value = track.id;
+          opt.textContent = track.title + (track.distanceMiles ? ` (${track.distanceMiles} mi)` : "");
+          if (track.id === selectedTrackId) opt.selected = true;
+          exportFollowTeam.appendChild(opt);
+        }
+        if (!selectedTrackId && data.tracks.length > 0) {
+          selectedTrackId = data.tracks[0].id;
+          if (exportFollowTeam.options.length > 0) exportFollowTeam.selectedIndex = 0;
+        }
+      }
+
+      if (chipVideo && chipGif) {
+        chipVideo.onclick = () => {
+          exportFormat = "video";
+          chipVideo.classList.add("active");
+          chipGif.classList.remove("active");
+          updateExportPreview();
+        };
+        chipGif.onclick = () => {
+          exportFormat = "gif";
+          chipGif.classList.add("active");
+          chipVideo.classList.remove("active");
+          updateExportPreview();
+        };
+      }
+
+      if (exportOpenBtn) exportOpenBtn.onclick = () => openExportModal();
+      if (exportCloseBtn) exportCloseBtn.onclick = () => closeExportModal();
+      if (exportCancelBtn) exportCancelBtn.onclick = () => closeExportModal();
+      if (exportStartBtn) exportStartBtn.onclick = () => startExport();
+      if (exportCancelRenderBtn) exportCancelRenderBtn.onclick = () => { exportAborted = true; };
+
+      if (exportCamera) {
+        exportCamera.addEventListener("change", () => {
+          updateCameraModeUI();
+          updateExportPreview();
+        });
+      }
+      if (exportFollowTeam) {
+        exportFollowTeam.addEventListener("change", () => {
+          selectTrack(exportFollowTeam.value, false);
+          updateExportPreview();
+        });
+      }
+
+      [exportRes, exportDuration, exportShowTime, exportShowLegend, exportShowMarkerLabels, exportShowLogo].forEach(el => {
+        if (el) el.onchange = () => updateExportPreview();
+      });
+
+      function openExportModal() {
+        if (!data || !data.tracks || data.tracks.length === 0) {
+          return;
+        }
+        if (playing) pausePlayback();
+        populateExportTeams();
+        updateCameraModeUI();
+        exportModal.removeAttribute("hidden");
+        exportModal.style.display = "grid";
+        try {
+          updateExportPreview();
+        } catch (e) {
+          console.warn("Preview render error:", e);
+        }
+      }
+
+      function closeExportModal() {
+        if (isExporting) exportAborted = true;
+        exportModal.setAttribute("hidden", "");
+        exportModal.style.display = "none";
+      }
+
+      exportModal.addEventListener("click", (e) => {
+        if (e.target === exportModal) closeExportModal();
+      });
+      window.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && !exportModal.hidden && exportModal.style.display !== "none") {
+          closeExportModal();
+        }
+      });
+
+      // Mercator Point Helper for Canvas with NaN defense
+      function mercatorProject(lat, lng, zoom, width, height, centerLat, centerLng) {
+        if (!Number.isFinite(lat) || !Number.isFinite(lng) || !Number.isFinite(centerLat) || !Number.isFinite(centerLng)) {
+          return { x: width / 2, y: height / 2 };
+        }
+        const scale = 256 * Math.pow(2, zoom);
+        const cSin = Math.max(-0.9999, Math.min(0.9999, Math.sin(centerLat * Math.PI / 180)));
+        const cX = scale * (centerLng + 180) / 360;
+        const cY = scale * (0.5 - Math.log((1 + cSin) / (1 - cSin)) / (4 * Math.PI));
+
+        const pSin = Math.max(-0.9999, Math.min(0.9999, Math.sin(lat * Math.PI / 180)));
+        const pX = scale * (lng + 180) / 360;
+        const pY = scale * (0.5 - Math.log((1 + pSin) / (1 - pSin)) / (4 * Math.PI));
+
+        return {
+          x: width / 2 + (pX - cX),
+          y: height / 2 + (pY - cY)
+        };
+      }
+
+      // Web Mercator Normalized Y coordinate helper [0, 1]
+      function mercatorNormY(lat) {
+        const sin = Math.max(-0.9999, Math.min(0.9999, Math.sin(lat * Math.PI / 180)));
+        return 0.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI);
+      }
+
+      // Inverse Web Mercator Normalized Y to Latitude in degrees
+      function mercatorInvY(yNorm) {
+        const u = 1 - 2 * yNorm;
+        return Math.atan(Math.sinh(Math.PI * u)) * 180 / Math.PI;
+      }
+
+      // Compute Target Camera Bounds at Timestamp t with Authentic Web Mercator Framing
+      function computeCameraTarget(t, outW = 1280, outH = 720) {
+        const camMode = exportCamera ? exportCamera.value : "static";
+        if (camMode === "static") {
+          const c = map.getCenter();
+          return { lat: c.lat, lng: c.lng, zoom: map.getZoom() };
+        }
+
+        if (camMode === "follow") {
+          const targetId = (exportFollowTeam && exportFollowTeam.value) || selectedTrackId;
+          const selectedTrack = data.tracks.find(tr => tr.id === targetId) || data.tracks[0];
+          const pt = (selectedTrack ? interp(selectedTrack, t) : null) || selectedTrack?.points?.[0];
+          if (pt) {
+            const lat = Array.isArray(pt) ? pt[0] : (pt.lat ?? pt[0]);
+            const lng = Array.isArray(pt) ? pt[1] : (pt.lng ?? pt[1]);
+            return { lat, lng, zoom: Math.min(14.8, Math.max(12.5, map.getZoom())) };
+          }
+          const c = map.getCenter();
+          return { lat: c.lat, lng: c.lng, zoom: map.getZoom() };
+        }
+
+        // Cinematic Auto-Cam: Frame ONLY teams that are active at timestamp t
+        const activeGraceMs = 300000; // 5 minute grace period after track ends before it drops from framing
+        const pts = [];
+
+        for (const track of data.tracks) {
+          if (!visible.has(track.id) || !track.points || track.points.length === 0) continue;
+          const pStart = track.points[0].time;
+          const pEnd = track.points[track.points.length - 1].time;
+
+          // Exclude tracks that have not started yet or ended more than grace period ago
+          if (t < pStart || t > pEnd + activeGraceMs) continue;
+
+          const pt = interp(track, Math.min(t, pEnd));
+          if (pt) {
+            const lat = Array.isArray(pt) ? pt[0] : (pt.lat ?? pt[0]);
+            const lng = Array.isArray(pt) ? pt[1] : (pt.lng ?? pt[1]);
+            if (Number.isFinite(lat) && Number.isFinite(lng)) {
+              pts.push({ lat, lng });
+            }
+          }
+        }
+
+        // Fallback 1: If no track is currently active, find tracks starting soonest or recently ended
+        if (pts.length === 0) {
+          let nearestDiff = Infinity;
+          let bestPoint = null;
+          for (const track of data.tracks) {
+            if (!visible.has(track.id) || !track.points || track.points.length === 0) continue;
+            const pStart = track.points[0].time;
+            const pEnd = track.points[track.points.length - 1].time;
+            if (pStart >= t && (pStart - t) < nearestDiff) {
+              nearestDiff = pStart - t;
+              bestPoint = track.points[0];
+            } else if (pEnd <= t && (t - pEnd) < nearestDiff) {
+              nearestDiff = t - pEnd;
+              bestPoint = track.points[track.points.length - 1];
+            }
+          }
+          if (bestPoint) {
+            pts.push({ lat: bestPoint.lat, lng: bestPoint.lng });
+          }
+        }
+
+        // Fallback 2: Default mission overview bounds
+        if (pts.length === 0) {
+          if (data.bounds && Number.isFinite(data.bounds.minLat)) {
+            const targetLat = (data.bounds.minLat + data.bounds.maxLat) / 2;
+            const targetLng = (data.bounds.minLng + data.bounds.maxLng) / 2;
+            return { lat: targetLat, lng: targetLng, zoom: Math.min(13.5, map.getZoom()) };
+          }
+          const c = map.getCenter();
+          return { lat: c.lat, lng: c.lng, zoom: map.getZoom() };
+        }
+
+        let minLat = 90, maxLat = -90, minLng = 180, maxLng = -180;
+        for (const p of pts) {
+          if (p.lat < minLat) minLat = p.lat;
+          if (p.lat > maxLat) maxLat = p.lat;
+          if (p.lng < minLng) minLng = p.lng;
+          if (p.lng > maxLng) maxLng = p.lng;
+        }
+
+        // Normalized Mercator bounds and midpoint
+        const minY = mercatorNormY(maxLat);
+        const maxY = mercatorNormY(minLat);
+        const midY = (minY + maxY) / 2;
+        const targetLat = mercatorInvY(midY);
+        const targetLng = (minLng + maxLng) / 2;
+
+        // Exact Web Mercator Zoom Fitting
+        // Margin factor: active points occupy at most 68% of screen (leaving 16% safe padding on each side)
+        const margin = 0.68;
+        const availW = Math.max(320, outW * margin);
+        const availH = Math.max(240, outH * margin);
+
+        const spanX = Math.max(0.0001, (maxLng - minLng) / 360);
+        const spanY = Math.max(0.0001, maxY - minY);
+
+        const zoomX = Math.log2(availW / (256 * spanX));
+        const zoomY = Math.log2(availH / (256 * spanY));
+
+        // Clamped: zoom ceiling 14.8 preserves topographic contours & trail context; floor 10.5 prevents zooming to continent
+        const targetZoom = Math.max(10.5, Math.min(14.8, Math.min(zoomX, zoomY)));
+        return { lat: targetLat, lng: targetLng, zoom: targetZoom };
+      }
+
+      function getTileUrl(layerKey, z, x, y) {
+        const subdomains = ["a", "b", "c", "d"];
+        const s = subdomains[Math.abs(x + y) % subdomains.length];
+        if (layerKey === "esri_dark" || layerKey === "carto_dark") {
+          return `https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/${z}/${y}/${x}`;
+        }
+        if (layerKey === "satellite") {
+          return `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`;
+        }
+        if (layerKey === "usgs") {
+          return `https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/${z}/${y}/${x}`;
+        }
+        if (layerKey === "opentopo") {
+          return `https://${s}.tile.opentopomap.org/${z}/${x}/${y}.png`;
+        }
+        return `https://${s}.tile.openstreetmap.org/${z}/${x}/${y}.png`;
+      }
+
+      function getMaxNativeZoom(layerKey) {
+        if (layerKey === "usgs" || layerKey === "esri_dark" || layerKey === "carto_dark") return 16;
+        if (layerKey === "opentopo") return 17;
+        return 18;
+      }
+
+      // Draw Complete Map Frame onto Canvas Context
+      function renderExportFrame(ctx, width, height, t, camLat, camLng, camZoom) {
+        const isDarkTheme = document.body.classList.contains("dark-mode");
+        ctx.fillStyle = isDarkTheme ? "#0b0f19" : "#e2e8f0";
+        ctx.fillRect(0, 0, width, height);
+
+        const hudScale = Math.max(1, Math.min(2.5, width / 1000));
+        const layerKey = baseLayerSelect ? baseLayerSelect.value : "osm";
+
+        // 1. Draw High-Resolution Map Tiles from Memory Cache & Fallbacks
+        const maxTileZoom = getMaxNativeZoom(layerKey);
+        const intZoom = Math.max(1, Math.min(maxTileZoom, Math.floor(camZoom)));
+        const zoomFactor = Math.pow(2, camZoom - intZoom);
+        const tileSize = 256;
+
+        const cSin = Math.max(-0.9999, Math.min(0.9999, Math.sin(camLat * Math.PI / 180)));
+        const cWorldX = (camLng + 180) / 360 * Math.pow(2, intZoom);
+        const cWorldY = (0.5 - Math.log((1 + cSin) / (1 - cSin)) / (4 * Math.PI)) * Math.pow(2, intZoom);
+
+        const halfW = (width / (tileSize * zoomFactor)) / 2;
+        const halfH = (height / (tileSize * zoomFactor)) / 2;
+        const minTX = Math.floor(cWorldX - halfW) - 1;
+        const maxTX = Math.ceil(cWorldX + halfW) + 1;
+        const minTY = Math.floor(cWorldY - halfH) - 1;
+        const maxTY = Math.ceil(cWorldY + halfH) + 1;
+
+        // Half-pixel overlap avoids fractional subpixel seams between adjacent tiles
+        const dw = Math.ceil(tileSize * zoomFactor) + 0.5;
+        const dh = Math.ceil(tileSize * zoomFactor) + 0.5;
+
+        // Draw tile grid with parent and grandparent quadrant fallbacks
+        for (let tx = minTX; tx <= maxTX; tx++) {
+          for (let ty = minTY; ty <= maxTY; ty++) {
+            const px = Math.floor(width / 2 + (tx - cWorldX) * tileSize * zoomFactor);
+            const py = Math.floor(height / 2 + (ty - cWorldY) * tileSize * zoomFactor);
+
+            const key = `${layerKey}/${intZoom}/${tx}/${ty}`;
+            const img = exportTileCache.get(key);
+            let drawn = false;
+
+            if (img && img.complete && img.naturalWidth > 0) {
+              try { ctx.drawImage(img, px, py, dw, dh); drawn = true; } catch (_) {}
+            }
+
+            // Fallback to parent tile quadrant if exact zoom level is still loading
+            if (!drawn) {
+              const pZoom = intZoom - 1;
+              const ptx = Math.floor(tx / 2);
+              const pty = Math.floor(ty / 2);
+              const pKey = `${layerKey}/${pZoom}/${ptx}/${pty}`;
+              const pImg = exportTileCache.get(pKey);
+              if (pImg && pImg.complete && pImg.naturalWidth > 0) {
+                const sx = (Math.abs(tx) % 2) * 128;
+                const sy = (Math.abs(ty) % 2) * 128;
+                try { ctx.drawImage(pImg, sx, sy, 128, 128, px, py, dw, dh); drawn = true; } catch (_) {}
+              }
+            }
+
+            // Fallback to grandparent tile quadrant if parent tile is also loading
+            if (!drawn && intZoom >= 2) {
+              const gpZoom = intZoom - 2;
+              const gptx = Math.floor(tx / 4);
+              const gpty = Math.floor(ty / 4);
+              const gpKey = `${layerKey}/${gpZoom}/${gptx}/${gpty}`;
+              const gpImg = exportTileCache.get(gpKey);
+              if (gpImg && gpImg.complete && gpImg.naturalWidth > 0) {
+                const sx = (Math.abs(tx) % 4) * 64;
+                const sy = (Math.abs(ty) % 4) * 64;
+                try { ctx.drawImage(gpImg, sx, sy, 64, 64, px, py, dw, dh); drawn = true; } catch (_) {}
+              }
+            }
+
+            // No strokeRect or flashing light-grey boxes: canvas background remains seamless and flicker-free
+          }
+        }
+
+        // 2. Draw Field Markers (Authentic CalTopo Icons matching interactive map)
+        const masterMarkersVisible = markersToggle ? markersToggle.checked : true;
+        if (masterMarkersVisible && data.markers && data.markers.length > 0) {
+          const markerScale = Math.max(0.85, Math.min(1.5, width / 1400));
+          for (const marker of data.markers) {
+            // Respect group checkbox visibility from main UI
+            if (marker.category && !markerGroupsVisible.has(marker.category)) continue;
+            // Respect marker appearance timestamp
+            if (Number.isFinite(marker.time) && marker.time > t) continue;
+
+            const mPt = mercatorProject(marker.lat, marker.lng, camZoom, width, height, camLat, camLng);
+            if (mPt.x < -80 || mPt.x > width + 80 || mPt.y < -80 || mPt.y > height + 80) continue;
+
+            const src = getMarkerIconSrc(marker);
+            let img = src ? exportMarkerIconCache.get(src) : null;
+            if (!img && src) {
+              img = new Image();
+              if (!src.startsWith("data:")) img.crossOrigin = "anonymous";
+              img.src = src;
+              exportMarkerIconCache.set(src, img);
+            }
+
+            const baseW = (marker.iconSize && marker.iconSize[0]) || 20;
+            const baseH = (marker.iconSize && marker.iconSize[1]) || 20;
+            const anchorX = (marker.iconAnchor && marker.iconAnchor[0]) ?? (baseW / 2);
+            const anchorY = (marker.iconAnchor && marker.iconAnchor[1]) ?? baseH;
+
+            const drawW = baseW * markerScale;
+            const drawH = baseH * markerScale;
+            const drawX = mPt.x - anchorX * markerScale;
+            const drawY = mPt.y - anchorY * markerScale;
+
+            if (img && img.complete && img.naturalWidth > 0) {
+              ctx.save();
+              ctx.shadowColor = "rgba(15, 23, 42, 0.35)";
+              ctx.shadowBlur = 4 * markerScale;
+              ctx.shadowOffsetY = 2 * markerScale;
+              ctx.drawImage(img, drawX, drawY, drawW, drawH);
+              ctx.restore();
+            } else {
+              drawFallbackMarker(ctx, mPt.x, mPt.y, marker, markerScale);
+            }
+
+            // Marker Title Label (Matches .leaflet-tooltip.marker-label: above marker, dark pill)
+            // Only show marker names above if enabled in export settings
+            const showMarkerLabel = Boolean(exportShowMarkerLabels && exportShowMarkerLabels.checked && ((labelsModeSelect.value === "all") || Boolean(marker.title && marker.labelVisible && labelsModeSelect.value !== "none")));
+            if (showMarkerLabel && marker.title) {
+              const labelText = marker.title;
+              const fontSize = Math.max(10, Math.round(11 * markerScale));
+              ctx.font = `bold ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+              const tw = ctx.measureText(labelText).width;
+              const padX = 7 * markerScale;
+              const padY = 2.5 * markerScale;
+              const pw = tw + padX * 2;
+              const ph = fontSize + padY * 2;
+              const pillX = mPt.x - pw / 2;
+              const pillY = drawY - ph - (4 * markerScale);
+
+              ctx.save();
+              ctx.shadowColor = "rgba(0, 0, 0, 0.25)";
+              ctx.shadowBlur = 6 * markerScale;
+              ctx.shadowOffsetY = 2 * markerScale;
+              ctx.fillStyle = "rgba(30, 41, 59, 0.92)";
+              ctx.beginPath();
+              ctx.roundRect ? ctx.roundRect(pillX, pillY, pw, ph, 4 * markerScale) : ctx.rect(pillX, pillY, pw, ph);
+              ctx.fill();
+              ctx.shadowColor = "transparent";
+              ctx.strokeStyle = "rgba(0, 0, 0, 0.3)";
+              ctx.lineWidth = 1;
+              ctx.stroke();
+
+              ctx.fillStyle = "#ffffff";
+              ctx.textAlign = "center";
+              ctx.textBaseline = "middle";
+              ctx.fillText(labelText, mPt.x, pillY + ph / 2);
+              ctx.restore();
+            }
+          }
+        }
+
+        // 3. Draw Track Polylines & Pucks (Respecting main UI View Mode, Stale Time & Visibility)
+        const viewMode = mode ? mode.value : "trail";
+        const staleMs = Number(stale ? stale.value : 0);
+
+        for (const track of data.tracks) {
+          if (!visible.has(track.id)) continue;
+
+          // Determine pts based on View Mode
+          let pts = [];
+          if (viewMode === "full") {
+            pts = allWindowPoints(track);
+          } else if (viewMode === "trail") {
+            pts = pointsUntil(track, t);
+          }
+
+          // Staleness calculation matching interactive map exactly
+          let opacity = 1;
+          const curr = interp(track, t);
+          if (staleMs > 0 && curr) {
+            const age = t - curr.time;
+            const fadeStart = staleMs * 0.7;
+            if (age > fadeStart) {
+              opacity = Math.max(0, 1 - ((age - fadeStart) / Math.max(1, staleMs - fadeStart)));
+            }
+          } else if (staleMs > 0 && !curr && track.points.length > 0) {
+            const idx = lowerBound(track.points, t);
+            const lastPt = track.points[Math.max(0, idx - 1)];
+            if (lastPt) {
+              const age = t - lastPt.time;
+              const fadeStart = staleMs * 0.7;
+              if (age > fadeStart) {
+                opacity = Math.max(0, 1 - ((age - fadeStart) / Math.max(1, staleMs - fadeStart)));
+              }
+            }
+          }
+
+          // Draw polyline (Clean GIS stroke matching Leaflet)
+          if (pts.length >= 2 && viewMode !== "position" && opacity > 0) {
+            ctx.save();
+            ctx.lineCap = "round";
+            ctx.lineJoin = "round";
+            ctx.globalAlpha = 0.78 * opacity;
+            ctx.beginPath();
+            let started = false;
+            for (const p of pts) {
+              const lat = Array.isArray(p) ? p[0] : (p.lat ?? p[0]);
+              const lng = Array.isArray(p) ? p[1] : (p.lng ?? p[1]);
+              if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+              const pt = mercatorProject(lat, lng, camZoom, width, height, camLat, camLng);
+              if (!started) { ctx.moveTo(pt.x, pt.y); started = true; }
+              else { ctx.lineTo(pt.x, pt.y); }
+            }
+            ctx.lineWidth = Math.max(2.5, Math.min(4.5, 3 * (width / 1280)));
+            ctx.strokeStyle = track.color || "#0b6f6a";
+            ctx.stroke();
+            ctx.restore();
+          }
+
+          // Navigation Puck (Exact SVG parity with map's markerIcon)
+          if (curr && opacity > 0) {
+            const curLat = Array.isArray(curr) ? curr[0] : (curr.lat ?? curr[0]);
+            const curLng = Array.isArray(curr) ? curr[1] : (curr.lng ?? curr[1]);
+            const puck = mercatorProject(curLat, curLng, camZoom, width, height, camLat, camLng);
+            const h = heading(track, t);
+            const puckScale = Math.max(0.85, Math.min(1.4, width / 1400));
+
+            ctx.save();
+            ctx.translate(puck.x, puck.y);
+            ctx.globalAlpha = opacity;
+
+            // Heading pointer notch (matches SVG polygon points="12,1 15.5,7 12,5.2 8.5,7")
+            if (Number.isFinite(h)) {
+              ctx.save();
+              ctx.rotate(h * Math.PI / 180);
+              ctx.beginPath();
+              ctx.moveTo(0, -11 * puckScale);
+              ctx.lineTo(3.5 * puckScale, -5 * puckScale);
+              ctx.lineTo(0, -6.8 * puckScale);
+              ctx.lineTo(-3.5 * puckScale, -5 * puckScale);
+              ctx.closePath();
+              ctx.fillStyle = track.color || "#0b6f6a";
+              ctx.fill();
+              ctx.lineWidth = 1.2 * puckScale;
+              ctx.strokeStyle = "#ffffff";
+              ctx.lineJoin = "round";
+              ctx.stroke();
+              ctx.restore();
+            }
+
+            // Outer ring & solid puck circle (cx=12, cy=12, r=6.8, stroke 2.2 #fff)
+            ctx.beginPath();
+            ctx.arc(0, 0, 6.8 * puckScale, 0, Math.PI * 2);
+            ctx.fillStyle = track.color || "#0b6f6a";
+            ctx.fill();
+            ctx.lineWidth = 2.2 * puckScale;
+            ctx.strokeStyle = "#ffffff";
+            ctx.stroke();
+
+            // Center dot (r=2.2, fill #fff, opacity 0.92)
+            ctx.beginPath();
+            ctx.arc(0, 0, 2.2 * puckScale, 0, Math.PI * 2);
+            ctx.fillStyle = "rgba(255, 255, 255, 0.92)";
+            ctx.fill();
+
+            ctx.restore();
+
+            // Active Track Label Pill (Matches .leaflet-tooltip.playback-label: above puck, [0, -14])
+            const isSelected = selectedTrackId === track.id;
+            const showTrackLabel = exportShowLegend.checked && (labelsModeSelect.value === "all" || (labelsModeSelect.value !== "none" && isSelected));
+            if (showTrackLabel) {
+              const labelText = track.title;
+              const fontSize = Math.max(10, Math.round(11 * puckScale));
+              ctx.font = `600 ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+              const tw = ctx.measureText(labelText).width;
+              const padX = 6 * puckScale;
+              const padY = 2.5 * puckScale;
+              const pw = tw + padX * 2;
+              const ph = fontSize + padY * 2;
+              const pillX = puck.x - pw / 2;
+              const pillY = puck.y - (14 * puckScale) - ph;
+
+              ctx.save();
+              ctx.globalAlpha = opacity;
+              ctx.shadowColor = "rgba(0, 0, 0, 0.25)";
+              ctx.shadowBlur = 6 * puckScale;
+              ctx.shadowOffsetY = 2 * puckScale;
+              ctx.fillStyle = "rgba(15, 23, 42, 0.88)";
+              ctx.beginPath();
+              ctx.roundRect ? ctx.roundRect(pillX, pillY, pw, ph, 4 * puckScale) : ctx.rect(pillX, pillY, pw, ph);
+              ctx.fill();
+              ctx.shadowColor = "transparent";
+              ctx.strokeStyle = "rgba(0, 0, 0, 0.35)";
+              ctx.lineWidth = 1;
+              ctx.stroke();
+
+              ctx.fillStyle = "#ffffff";
+              ctx.textAlign = "center";
+              ctx.textBaseline = "middle";
+              ctx.fillText(labelText, puck.x, pillY + ph / 2);
+              ctx.restore();
+            }
+          }
+        }
+
+        const padX = Math.round(20 * hudScale);
+        const padY = Math.round(20 * hudScale);
+
+        // 4. Prominent Brand Watermark (Top-Left)
+        if (exportShowLogo.checked) {
+          ctx.save();
+          const bh = Math.round(44 * hudScale);
+          const fontSize = Math.round(15 * hudScale);
+          ctx.font = `800 ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+          const text1 = "CalTopo ";
+          const text2 = "Playback";
+          const tw1 = ctx.measureText(text1).width;
+          const tw2 = ctx.measureText(text2).width;
+          const bw = Math.round(34 * hudScale + tw1 + tw2 + 24 * hudScale);
+
+          ctx.shadowColor = "rgba(0, 0, 0, 0.45)";
+          ctx.shadowBlur = Math.round(12 * hudScale);
+          ctx.shadowOffsetX = 0;
+          ctx.shadowOffsetY = Math.round(3 * hudScale);
+
+          ctx.fillStyle = "rgba(15, 23, 42, 0.94)";
+          ctx.beginPath();
+          ctx.roundRect ? ctx.roundRect(padX, padY, bw, bh, Math.round(10 * hudScale)) : ctx.rect(padX, padY, bw, bh);
+          ctx.fill();
+
+          ctx.shadowColor = "transparent";
+          ctx.strokeStyle = "rgba(45, 212, 191, 0.5)";
+          ctx.lineWidth = 1.5 * hudScale;
+          ctx.stroke();
+
+          // CalTopo Pin Icon inside Badge
+          const pinCenterX = padX + Math.round(18 * hudScale);
+          const pinCenterY = padY + bh / 2 + Math.round(2 * hudScale);
+          const pinR = Math.round(7.5 * hudScale);
+          const pinTipY = pinCenterY + Math.round(8 * hudScale);
+          const pinHeadY = pinCenterY - Math.round(4 * hudScale);
+
+          ctx.beginPath();
+          ctx.arc(pinCenterX, pinHeadY, pinR, Math.PI * 0.75, Math.PI * 2.25, false);
+          ctx.lineTo(pinCenterX, pinTipY);
+          ctx.closePath();
+          ctx.fillStyle = "#0b6f6a";
+          ctx.fill();
+          ctx.strokeStyle = "#ffffff";
+          ctx.lineWidth = 1.6 * hudScale;
+          ctx.stroke();
+
+          // Play triangle
+          ctx.beginPath();
+          ctx.moveTo(pinCenterX - 2 * hudScale, pinHeadY - 3 * hudScale);
+          ctx.lineTo(pinCenterX + 3 * hudScale, pinHeadY);
+          ctx.lineTo(pinCenterX - 2 * hudScale, pinHeadY + 3 * hudScale);
+          ctx.closePath();
+          ctx.fillStyle = "#ffffff";
+          ctx.fill();
+
+          // Typography
+          const textStartX = pinCenterX + pinR + Math.round(10 * hudScale);
+          const textY = padY + bh / 2;
+          ctx.textAlign = "left";
+          ctx.textBaseline = "middle";
+
+          ctx.fillStyle = "#ffffff";
+          ctx.fillText(text1, textStartX, textY);
+          ctx.fillStyle = "#2dd4bf";
+          ctx.fillText(text2, textStartX + tw1, textY);
+
+          ctx.restore();
+        }
+
+        // 5. Prominent Timestamp HUD (Top-Right)
+        if (exportShowTime.checked) {
+          ctx.save();
+          const timeStr = formatTimestamp(t, utcMode);
+          const bh = Math.round(44 * hudScale);
+          const fontSize = Math.round(15 * hudScale);
+          ctx.font = `bold ${fontSize}px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace`;
+          const tw = ctx.measureText(timeStr).width;
+          const bw = Math.round(tw + 34 * hudScale);
+          const tx = width - bw - padX;
+
+          ctx.shadowColor = "rgba(0, 0, 0, 0.45)";
+          ctx.shadowBlur = Math.round(12 * hudScale);
+          ctx.shadowOffsetX = 0;
+          ctx.shadowOffsetY = Math.round(3 * hudScale);
+
+          ctx.fillStyle = "rgba(15, 23, 42, 0.94)";
+          ctx.beginPath();
+          ctx.roundRect ? ctx.roundRect(tx, padY, bw, bh, Math.round(10 * hudScale)) : ctx.rect(tx, padY, bw, bh);
+          ctx.fill();
+
+          ctx.shadowColor = "transparent";
+          ctx.strokeStyle = "rgba(255, 255, 255, 0.3)";
+          ctx.lineWidth = 1.5 * hudScale;
+          ctx.stroke();
+
+          // Sky-blue live telemetry indicator dot
+          ctx.beginPath();
+          ctx.arc(tx + Math.round(16 * hudScale), padY + bh / 2, Math.round(4 * hudScale), 0, Math.PI * 2);
+          ctx.fillStyle = "#38bdf8";
+          ctx.fill();
+
+          ctx.fillStyle = "#f8fafc";
+          ctx.textAlign = "left";
+          ctx.textBaseline = "middle";
+          ctx.fillText(timeStr, tx + Math.round(26 * hudScale), padY + bh / 2);
+
+          ctx.restore();
+        }
+      }
+
+      let exportPreviewRaf = null;
+      function scheduleExportPreviewRender() {
+        if (exportPreviewRaf) return;
+        exportPreviewRaf = requestAnimationFrame(() => {
+          exportPreviewRaf = null;
+          if (exportModal && !exportModal.hidden && exportModal.style.display !== "none") {
+            const previewCanvas = exportCanvas;
+            if (!previewCanvas) return;
+            const ctx = previewCanvas.getContext("2d");
+            const w = previewCanvas.width;
+            const h = previewCanvas.height;
+            const target = computeCameraTarget(current, w, h);
+            renderExportFrame(ctx, w, h, current, target.lat, target.lng, target.zoom);
+          }
+        });
+      }
+
+      // Update Preview Canvas in Modal
+      function updateExportPreview() {
+        const previewCanvas = exportCanvas;
+        if (!previewCanvas) return;
+        const ctx = previewCanvas.getContext("2d");
+        const w = previewCanvas.width;
+        const h = previewCanvas.height;
+
+        const target = computeCameraTarget(current, w, h);
+        const layerKey = baseLayerSelect ? baseLayerSelect.value : "osm";
+        const maxTileZoom = getMaxNativeZoom(layerKey);
+        const intZoom = Math.max(1, Math.min(maxTileZoom, Math.floor(target.zoom)));
+        const zoomFactor = Math.pow(2, target.zoom - intZoom);
+        const tileSize = 256;
+        const cSin = Math.max(-0.9999, Math.min(0.9999, Math.sin(target.lat * Math.PI / 180)));
+        const cWorldX = (target.lng + 180) / 360 * Math.pow(2, intZoom);
+        const cWorldY = (0.5 - Math.log((1 + cSin) / (1 - cSin)) / (4 * Math.PI)) * Math.pow(2, intZoom);
+        const halfW = (w / (tileSize * zoomFactor)) / 2;
+        const halfH = (h / (tileSize * zoomFactor)) / 2;
+        const minTX = Math.floor(cWorldX - halfW) - 1;
+        const maxTX = Math.ceil(cWorldX + halfW) + 1;
+        const minTY = Math.floor(cWorldY - halfH) - 1;
+        const maxTY = Math.ceil(cWorldY + halfH) + 1;
+
+        // Fetch missing preview tiles
+        for (let tx = minTX; tx <= maxTX; tx++) {
+          for (let ty = minTY; ty <= maxTY; ty++) {
+            const key = `${layerKey}/${intZoom}/${tx}/${ty}`;
+            if (!exportTileCache.has(key) && !exportTileCache.has(`loading:${key}`)) {
+              exportTileCache.set(`loading:${key}`, true);
+              const img = new Image();
+              img.crossOrigin = "anonymous";
+              img.onload = () => {
+                exportTileCache.delete(`loading:${key}`);
+                exportTileCache.set(key, img);
+                scheduleExportPreviewRender();
+              };
+              img.onerror = () => {
+                exportTileCache.delete(`loading:${key}`);
+                exportTileCache.set(key, null);
+              };
+              img.src = getTileUrl(layerKey, intZoom, tx, ty);
+            }
+          }
+        }
+
+        renderExportFrame(ctx, w, h, current, target.lat, target.lng, target.zoom);
+
+        const durationSec = Number(exportDuration?.value || 15);
+        const resMode = exportRes?.value || "1080p";
+        const isGif = exportFormat === "gif";
+        const camLabel = exportCamera?.options?.[exportCamera?.selectedIndex]?.text || "Cinematic Auto-Cam";
+        if (exportPreviewInfo) {
+          exportPreviewInfo.textContent = `${isGif ? 'Animated GIF' : 'MP4/WebM Video'} • ${resMode} • ${durationSec}s clip • ${camLabel}`;
+        }
+      }
+
+      // Pure JS Zero-Dependency GIF89a Async Non-Blocking Encoder with Precomputed 15-bit LUT
+      async function encodeGifBlob(frames, width, height, delay100th, onProgress) {
+        const bytes = [];
+        const writeByte = b => bytes.push(b & 0xff);
+        const writeWord = w => { bytes.push(w & 0xff); bytes.push((w >> 8) & 0xff); };
+        const writeString = s => { for (let i = 0; i < s.length; i++) bytes.push(s.charCodeAt(i)); };
+
+        writeString("GIF89a");
+        writeWord(width);
+        writeWord(height);
+        writeByte(0xf7); // Global color table, 256 colors
+        writeByte(0);
+        writeByte(0);
+
+        // 256 Palette: 6x6x6 color cube + 40 outdoor shades
+        const palette = [];
+        for (let r = 0; r < 6; r++) {
+          for (let g = 0; g < 6; g++) {
+            for (let b = 0; b < 6; b++) {
+              palette.push([Math.round(r * 255 / 5), Math.round(g * 255 / 5), Math.round(b * 255 / 5)]);
+            }
+          }
+        }
+        for (let i = 0; i < 40; i++) {
+          const v = Math.round(i * 255 / 39);
+          palette.push([Math.round(v * 0.1), Math.round(v * 0.7), Math.round(v * 0.65)]);
+        }
+
+        for (let i = 0; i < 256; i++) {
+          const col = palette[i] || [0, 0, 0];
+          writeByte(col[0]); writeByte(col[1]); writeByte(col[2]);
+        }
+
+        // Netscape Loop Extension
+        writeByte(0x21); writeByte(0xff); writeByte(0x0b);
+        writeString("NETSCAPE2.0");
+        writeByte(0x03); writeByte(0x01); writeWord(0); writeByte(0x00);
+
+        // Precompute 32KB 15-bit RGB Lookup Table (LUT) once (~10ms)
+        const colorLUT = new Uint8Array(32768);
+        for (let r5 = 0; r5 < 32; r5++) {
+          const r8 = (r5 << 3) | (r5 >> 2);
+          for (let g5 = 0; g5 < 32; g5++) {
+            const g8 = (g5 << 3) | (g5 >> 2);
+            for (let b5 = 0; b5 < 32; b5++) {
+              const b8 = (b5 << 3) | (b5 >> 2);
+              let bestDist = Infinity, bestIdx = 0;
+              for (let i = 0; i < 256; i++) {
+                const p = palette[i];
+                const dr = r8 - p[0], dg = g8 - p[1], db = b8 - p[2];
+                const d = dr * dr + dg * dg + db * db;
+                if (d < bestDist) {
+                  bestDist = d;
+                  bestIdx = i;
+                  if (d === 0) break;
+                }
+              }
+              colorLUT[(r5 << 10) | (g5 << 5) | b5] = bestIdx;
+            }
+          }
+        }
+
+        for (let f = 0; f < frames.length; f++) {
+          if (exportAborted) throw new Error("Export cancelled by user.");
+          if (onProgress) onProgress(f, frames.length);
+          await new Promise(r => setTimeout(r, 0));
+
+          const imgData = frames[f];
+          const d = imgData.data;
+
+          // Graphic Control
+          writeByte(0x21); writeByte(0xf9); writeByte(0x04);
+          writeByte(0x00);
+          writeWord(Math.max(2, Math.round(delay100th)));
+          writeByte(0x00);
+          writeByte(0x00);
+
+          // Image Descriptor
+          writeByte(0x2c);
+          writeWord(0); writeWord(0);
+          writeWord(width); writeWord(height);
+          writeByte(0x00);
+
+          const pixels = new Uint8Array(width * height);
+          for (let i = 0, p = 0; i < d.length; i += 4, p++) {
+            const r5 = d[i] >> 3;
+            const g5 = d[i + 1] >> 3;
+            const b5 = d[i + 2] >> 3;
+            pixels[p] = colorLUT[(r5 << 10) | (g5 << 5) | b5];
+          }
+
+          // LZW
+          lzwCompress(8, pixels, bytes);
+        }
+
+        writeByte(0x3b);
+        return new Blob([new Uint8Array(bytes)], { type: "image/gif" });
+      }
+
+      function lzwCompress(minCodeSize, pixels, output) {
+        output.push(minCodeSize);
+        const clearCode = 1 << minCodeSize;
+        const eoiCode = clearCode + 1;
+        let codeSize = minCodeSize + 1;
+        let nextCode = eoiCode + 1;
+        let maxCode = 1 << codeSize;
+
+        const dict = new Map();
+        function reset() {
+          dict.clear();
+          for (let i = 0; i < clearCode; i++) dict.set(String(i), i);
+          codeSize = minCodeSize + 1;
+          maxCode = 1 << codeSize;
+          nextCode = eoiCode + 1;
+        }
+        reset();
+
+        let curAccum = 0, curBits = 0;
+        const subBlock = [];
+        function flush() {
+          if (subBlock.length > 0) {
+            output.push(subBlock.length);
+            for (let i = 0; i < subBlock.length; i++) output.push(subBlock[i]);
+            subBlock.length = 0;
+          }
+        }
+        function emit(code) {
+          curAccum |= (code << curBits);
+          curBits += codeSize;
+          while (curBits >= 8) {
+            subBlock.push(curAccum & 0xff);
+            if (subBlock.length === 254) flush();
+            curAccum >>= 8;
+            curBits -= 8;
+          }
+        }
+
+        emit(clearCode);
+        let prefix = "";
+        for (let i = 0; i < pixels.length; i++) {
+          const k = pixels[i];
+          const combo = prefix === "" ? String(k) : prefix + "," + k;
+          if (dict.has(combo)) {
+            prefix = combo;
+          } else {
+            emit(dict.get(prefix));
+            if (nextCode < 4096) {
+              dict.set(combo, nextCode++);
+              if (nextCode > maxCode && codeSize < 12) {
+                codeSize++;
+                maxCode = 1 << codeSize;
+              }
+            } else {
+              emit(clearCode);
+              reset();
+            }
+            prefix = String(k);
+          }
+        }
+        if (prefix !== "") emit(dict.get(prefix));
+        emit(eoiCode);
+        if (curBits > 0) subBlock.push(curAccum & 0xff);
+        flush();
+        output.push(0x00);
+      }
+
+      function getSupportedVideoMime() {
+        if (typeof MediaRecorder === "undefined") return null;
+        const candidates = [
+          "video/mp4;codecs=avc1",
+          "video/mp4",
+          "video/webm;codecs=vp9",
+          "video/webm;codecs=vp8",
+          "video/webm"
+        ];
+        for (const cand of candidates) {
+          try {
+            if (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(cand)) return cand;
+          } catch (_) {}
+        }
+        return null;
+      }
+
+      // Start Full Export Routine
+      async function startExport() {
+        if (isExporting) return;
+        isExporting = true;
+        exportAborted = false;
+
+        const durationSec = Number(exportDuration.value || 15);
+        let effectiveFormat = exportFormat;
+        const hasCaptureStream = typeof HTMLCanvasElement !== "undefined" && typeof HTMLCanvasElement.prototype.captureStream === "function";
+        const videoMime = getSupportedVideoMime();
+
+        if (effectiveFormat === "video" && (!hasCaptureStream || !videoMime)) {
+          effectiveFormat = "gif";
+        }
+
+        const fps = effectiveFormat === "gif" ? 12 : 30;
+        const totalFrames = Math.round(durationSec * fps);
+
+        let outW = 1920, outH = 1080;
+        if (exportRes.value === "720p") { outW = 1280; outH = 720; }
+        else if (exportRes.value === "square") { outW = 1080; outH = 1080; }
+        else if (exportRes.value === "vertical") { outW = 1080; outH = 1920; }
+
+        if (effectiveFormat === "gif") {
+          const gifScale = Math.min(1, 520 / outW);
+          outW = Math.round(outW * gifScale);
+          outH = Math.round(outH * gifScale);
+        }
+
+        const renderCanvas = document.createElement("canvas");
+        renderCanvas.width = outW;
+        renderCanvas.height = outH;
+        const rCtx = renderCanvas.getContext("2d", effectiveFormat === "gif" ? { willReadFrequently: true } : {});
+        const previewCtx = exportCanvas.getContext("2d");
+
+        exportStatusOverlay.removeAttribute("hidden");
+        exportStatusOverlay.style.display = "flex";
+        exportProgressBar.style.width = "0%";
+        exportProgressText.textContent = `Computing camera flight trajectory...`;
+
+        // Precompute raw camera targets across all frames
+        const rawTrajectory = [];
+        for (let i = 0; i < totalFrames; i++) {
+          const t = viewStart + (i / Math.max(1, totalFrames - 1)) * duration;
+          rawTrajectory.push(computeCameraTarget(t, outW, outH));
+        }
+
+        // Bidirectional Gaussian window smoothing (±0.75s window) - zero lag, no rubber-banding
+        const smoothWindow = Math.max(3, Math.round(fps * 0.75));
+        const cameraTrajectory = [];
+
+        for (let i = 0; i < totalFrames; i++) {
+          let sumLat = 0, sumLng = 0, sumZoom = 0, totalWeight = 0;
+          const start = Math.max(0, i - smoothWindow);
+          const end = Math.min(totalFrames - 1, i + smoothWindow);
+
+          for (let j = start; j <= end; j++) {
+            const dist = (j - i) / smoothWindow;
+            const weight = Math.exp(-2.5 * dist * dist);
+            sumLat += rawTrajectory[j].lat * weight;
+            sumLng += rawTrajectory[j].lng * weight;
+            sumZoom += rawTrajectory[j].zoom * weight;
+            totalWeight += weight;
+          }
+
+          cameraTrajectory.push({
+            lat: sumLat / totalWeight,
+            lng: sumLng / totalWeight,
+            zoom: sumZoom / totalWeight
+          });
+        }
+
+        try {
+          // Preload authentic marker icons
+          if (data.markers && data.markers.length > 0) {
+            exportProgressText.textContent = "Preloading marker icons...";
+            const markerPromises = data.markers.map(m => new Promise(resolve => {
+              const src = getMarkerIconSrc(m);
+              if (!src) return resolve();
+              let img = exportMarkerIconCache.get(src);
+              if (img && img.complete) return resolve();
+              if (!img) {
+                img = new Image();
+                if (!src.startsWith("data:")) img.crossOrigin = "anonymous";
+                img.src = src;
+                exportMarkerIconCache.set(src, img);
+              }
+              img.onload = () => resolve();
+              img.onerror = () => resolve();
+            }));
+            await Promise.all(markerPromises);
+          }
+
+          // Preload High-Resolution Map Tiles Along Camera Flight (Exact zoom only, with concurrency & timeouts)
+          const layerKey = baseLayerSelect ? baseLayerSelect.value : "osm";
+          const tilesToFetch = [];
+          const seenKeys = new Set();
+          const tileSize = 256;
+
+          for (let i = 0; i < totalFrames; i += 2) {
+            const cam = cameraTrajectory[i];
+            const maxNative = getMaxNativeZoom(layerKey);
+            const z = Math.max(1, Math.min(maxNative, Math.floor(cam.zoom)));
+            const zf = Math.pow(2, cam.zoom - z);
+            const cS = Math.max(-0.9999, Math.min(0.9999, Math.sin(cam.lat * Math.PI / 180)));
+            const cX = (cam.lng + 180) / 360 * Math.pow(2, z);
+            const cY = (0.5 - Math.log((1 + cS) / (1 - cS)) / (4 * Math.PI)) * Math.pow(2, z);
+            const hW = (outW / (tileSize * zf)) / 2;
+            const hH = (outH / (tileSize * zf)) / 2;
+            const mX = Math.floor(cX - hW) - 1, maX = Math.ceil(cX + hW) + 1;
+            const mY = Math.floor(cY - hH) - 1, maY = Math.ceil(cY + hH) + 1;
+
+            for (let tx = mX; tx <= maX; tx++) {
+              for (let ty = mY; ty <= maY; ty++) {
+                const k = `${layerKey}/${z}/${tx}/${ty}`;
+                if (!seenKeys.has(k) && !exportTileCache.has(k)) {
+                  seenKeys.add(k);
+                  tilesToFetch.push({ layerKey, z, tx, ty });
+                }
+              }
+            }
+          }
+
+          if (tilesToFetch.length > 0) {
+            let loadedTiles = 0;
+            const concurrency = 8;
+            let cursor = 0;
+            async function tileWorker() {
+              while (cursor < tilesToFetch.length) {
+                if (exportAborted) throw new Error("Export cancelled by user.");
+                const tile = tilesToFetch[cursor++];
+                const key = `${tile.layerKey}/${tile.z}/${tile.tx}/${tile.ty}`;
+                await new Promise(resolve => {
+                  let settled = false;
+                  const finish = (imgObj) => {
+                    if (settled) return;
+                    settled = true;
+                    if (imgObj) exportTileCache.set(key, imgObj);
+                    else exportTileCache.set(key, null);
+                    loadedTiles++;
+                    const pct = Math.round((loadedTiles / tilesToFetch.length) * 25);
+                    exportProgressBar.style.width = pct + "%";
+                    exportProgressText.textContent = `Preloading map tiles (${loadedTiles}/${tilesToFetch.length})...`;
+                    resolve();
+                  };
+                  const timer = setTimeout(() => finish(null), 2500);
+                  const img = new Image();
+                  img.crossOrigin = "anonymous";
+                  img.onload = () => { clearTimeout(timer); finish(img); };
+                  img.onerror = () => { clearTimeout(timer); finish(null); };
+                  img.src = getTileUrl(tile.layerKey, tile.z, tile.tx, tile.ty);
+                });
+              }
+            }
+            const workers = Array.from({ length: Math.min(concurrency, tilesToFetch.length) }, () => tileWorker());
+            await Promise.all(workers);
+          }
+
+          if (effectiveFormat === "video") {
+            let stream;
+            try {
+              // 0 fps = deterministic manual frame capture via requestFrame()
+              stream = renderCanvas.captureStream(0);
+            } catch (streamErr) {
+              console.warn("captureStream threw, fallback to GIF:", streamErr);
+              effectiveFormat = "gif";
+            }
+
+            if (stream) {
+              const videoTrack = stream.getVideoTracks ? stream.getVideoTracks()[0] : null;
+              const recorder = new MediaRecorder(stream, { mimeType: videoMime, videoBitsPerSecond: 14000000 });
+              const chunks = [];
+              recorder.ondataavailable = e => { if (e.data && e.data.size > 0) chunks.push(e.data); };
+
+              const recordPromise = new Promise((resolve, reject) => {
+                recorder.onstop = () => {
+                  if (chunks.length === 0) reject(new Error("No video data recorded."));
+                  else resolve(new Blob(chunks, { type: videoMime }));
+                };
+                recorder.onerror = (err) => reject(err);
+              });
+
+              recorder.start();
+
+              const frameDurationMs = 1000 / fps;
+              for (let i = 0; i < totalFrames; i++) {
+                if (exportAborted) {
+                  try { recorder.stop(); } catch (_) {}
+                  throw new Error("Export cancelled by user.");
+                }
+                const t = viewStart + (i / Math.max(1, totalFrames - 1)) * duration;
+                const cam = cameraTrajectory[i];
+                renderExportFrame(rCtx, outW, outH, t, cam.lat, cam.lng, cam.zoom);
+
+                if (videoTrack && typeof videoTrack.requestFrame === "function") {
+                  videoTrack.requestFrame();
+                }
+
+                previewCtx.drawImage(renderCanvas, 0, 0, exportCanvas.width, exportCanvas.height);
+
+                const pct = 25 + Math.round((i + 1) / totalFrames * 75);
+                exportProgressBar.style.width = pct + "%";
+                exportProgressText.textContent = `Rendering video frame ${i + 1} of ${totalFrames} (${pct}%)...`;
+
+                // Brief tick to allow compositor to ingest the captured frame
+                await new Promise(r => setTimeout(r, Math.max(2, Math.min(30, frameDurationMs * 0.5))));
+              }
+
+              // Allow last frame to settle into recorder pipeline
+              await new Promise(r => setTimeout(r, 200));
+
+              if (recorder.state === "recording") {
+                try { recorder.requestData?.(); } catch (_) {}
+                recorder.stop();
+              }
+              exportProgressText.textContent = "Finalizing video file...";
+              const videoBlob = await recordPromise;
+
+              const ext = videoMime.includes("mp4") ? "mp4" : "webm";
+              const a = document.createElement("a");
+              const blobUrl = URL.createObjectURL(videoBlob);
+              a.href = blobUrl;
+              a.download = `caltopo-playback-${exportRes.value}-${durationSec}s.${ext}`;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+            }
+          }
+
+          if (effectiveFormat === "gif") {
+            const capturedFrames = [];
+            for (let i = 0; i < totalFrames; i++) {
+              if (exportAborted) throw new Error("Export cancelled by user.");
+              const t = viewStart + (i / Math.max(1, totalFrames - 1)) * duration;
+              const cam = cameraTrajectory[i];
+              renderExportFrame(rCtx, outW, outH, t, cam.lat, cam.lng, cam.zoom);
+              capturedFrames.push(rCtx.getImageData(0, 0, outW, outH));
+
+              previewCtx.drawImage(renderCanvas, 0, 0, exportCanvas.width, exportCanvas.height);
+
+              const pct = 25 + Math.round((i + 1) / totalFrames * 35);
+              exportProgressBar.style.width = pct + "%";
+              exportProgressText.textContent = `Sampling frame ${i + 1} of ${totalFrames} (${pct}%)...`;
+
+              await new Promise(r => setTimeout(r, 6));
+            }
+
+            exportProgressText.textContent = "Encoding GIF color palette & LZW stream...";
+            const delay100th = Math.max(2, Math.round(100 / fps));
+            const gifBlob = await encodeGifBlob(capturedFrames, outW, outH, delay100th, (curr, total) => {
+              const pct = 60 + Math.round((curr / total) * 40);
+              exportProgressBar.style.width = pct + "%";
+              exportProgressText.textContent = `Encoding GIF frame ${curr + 1} of ${total} (${pct}%)...`;
+            });
+
+            const a = document.createElement("a");
+            const blobUrl = URL.createObjectURL(gifBlob);
+            a.href = blobUrl;
+            a.download = `caltopo-playback-${exportRes.value}-${durationSec}s.gif`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+          }
+
+          setTimeout(() => {
+            exportStatusOverlay.setAttribute("hidden", "");
+            exportStatusOverlay.style.display = "none";
+            isExporting = false;
+            closeExportModal();
+          }, 600);
+
+        } catch (err) {
+          console.warn("Export error:", err);
+          exportStatusOverlay.setAttribute("hidden", "");
+          exportStatusOverlay.style.display = "none";
+          isExporting = false;
+        }
+      }
+
+      // Settings dropdowns
+      speed.onchange = () => { previousFrame = null; };
       stale.onchange = () => update(current);
       mode.onchange = () => update(current);
+      labelsModeSelect.onchange = () => {
+        labelsMode = labelsModeSelect.value;
+        for (const { marker, layer } of markerLayers.values()) {
+          const shouldBePermanent = Boolean(marker.labelVisible && labelsMode === "all");
+          layer.unbindTooltip();
+          layer.bindTooltip(marker.title, {
+            permanent: shouldBePermanent,
+            direction: "top",
+            offset: [0, -12],
+            className: "marker-label",
+            opacity: .95
+          });
+        }
+        update(current);
+      };
+
+      // Base Layer Switcher (CalTopo Parity)
+      baseLayerSelect.onchange = () => {
+        const chosen = baseLayers[baseLayerSelect.value];
+        if (chosen && chosen !== activeBaseLayer) {
+          map.removeLayer(activeBaseLayer);
+          activeBaseLayer = chosen;
+          activeBaseLayer.addTo(map);
+        }
+      };
+
+      // Track Selection All / None Buttons
+      document.getElementById("tracksAll").onclick = () => {
+        for (const track of data.tracks) {
+          visible.add(track.id);
+          const row = layers.get(track.id)?.row;
+          if (row) row.querySelector(".track-check").checked = true;
+        }
+        update(current);
+      };
+      document.getElementById("tracksNone").onclick = () => {
+        visible.clear();
+        for (const track of data.tracks) {
+          const row = layers.get(track.id)?.row;
+          if (row) row.querySelector(".track-check").checked = false;
+        }
+        update(current);
+      };
+
+      // Marker Selection All / None Buttons
+      document.getElementById("markersAll").onclick = () => {
+        for (const group of data.markerGroups || []) {
+          markerGroupsVisible.add(group.name);
+        }
+        markerList.querySelectorAll("input").forEach(cb => cb.checked = true);
+        updateMarkers(current);
+      };
+      document.getElementById("markersNone").onclick = () => {
+        markerGroupsVisible.clear();
+        markerList.querySelectorAll("input").forEach(cb => cb.checked = false);
+        updateMarkers(current);
+      };
+
       function setListCollapsed(collapsed) {
         document.body.classList.toggle("mobile-list-collapsed", collapsed);
         listToggle.textContent = collapsed ? "List" : "Hide";
@@ -338,28 +3576,32 @@
         setTimeout(() => map.invalidateSize(), 210);
       }
       listToggle.onclick = () => setListCollapsed(!document.body.classList.contains("mobile-list-collapsed"));
+
       range.onchange = () => {
         activeWindow = Number(range.value);
         viewStart = windows.items[activeWindow].start;
         viewEnd = windows.items[activeWindow].end;
         duration = Math.max(1, viewEnd - viewStart);
-        playing = false;
-        playButton.textContent = "Play";
+        pausePlayback();
         refreshMeta();
         fitWindowBounds();
         update(viewStart);
       };
+
       refreshMeta();
       fitWindowBounds();
       update(viewStart);
-      setListCollapsed(window.matchMedia("(max-width: 620px)").matches);
+      setListCollapsed(window.matchMedia("(max-width: 640px)").matches);
       document.getElementById("loader").hidden = true;
       document.querySelector(".topbar").hidden = false;
     }
+
     function staticMarkerIcon(marker) {
+      const url = marker.iconRetinaDataUrl || marker.iconDataUrl || marker.iconUrl;
+      const retinaUrl = marker.iconRetinaDataUrl || marker.iconRetinaUrl || url;
       return L.icon({
-        iconUrl: marker.iconUrl,
-        iconRetinaUrl: marker.iconRetinaUrl,
+        iconUrl: marker.iconUrl || url,
+        iconRetinaUrl: marker.iconRetinaUrl || retinaUrl,
         iconSize: marker.iconSize,
         iconAnchor: marker.iconAnchor,
         popupAnchor: [0, -marker.iconSize[1] / 2]
@@ -395,9 +3637,15 @@
     }
     function buildWindows(data) {
       const dayMap = new Map();
-      for (const track of data.tracks) {
+      let activeStart = Infinity;
+      let activeEnd = -Infinity;
+      let totalTrackPoints = 0;
+      for (const track of data.tracks || []) {
+        totalTrackPoints += track.points.length;
         const trackKey = track.id || track.title;
         for (const point of track.points) {
+          if (point.time < activeStart) activeStart = point.time;
+          if (point.time > activeEnd) activeEnd = point.time;
           const date = new Date(point.time);
           const key = date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0") + "-" + String(date.getDate()).padStart(2, "0");
           let item = dayMap.get(key);
@@ -420,7 +3668,19 @@
         }
       }
       const days = [...dayMap.values()].filter(item => item.points >= 2).sort((a, b) => b.start - a.start);
-      const items = [{ key: "all", label: "All time", start: firstObject, end: data.end, points: data.tracks.reduce((sum, track) => sum + track.points.length, 0), tracks: data.tracks.length }];
+      const items = [{ key: "all", label: "All time", start: firstObject, end: data.end, points: (data.tracks || []).reduce((sum, track) => sum + track.points.length, 0), tracks: (data.tracks || []).length }];
+      if (activeStart < Infinity && activeEnd > activeStart) {
+        const hours = (activeEnd - activeStart) / 3600000;
+        const durStr = hours < 24 ? hours.toFixed(1) + "h" : (hours / 24).toFixed(1) + "d";
+        items.push({
+          key: "active",
+          label: "Active Tracks (" + durStr + ")",
+          start: activeStart,
+          end: activeEnd,
+          points: totalTrackPoints,
+          tracks: (data.tracks || []).length
+        });
+      }
       for (const day of days) {
         items.push({ key: day.key, label: new Date(day.start).toLocaleDateString() + " (" + day.tracks + " tracks)", start: day.start, end: day.end, points: day.points, tracks: day.tracks });
       }
@@ -428,6 +3688,8 @@
       if (data.end - data.start > 7 * 86400000 && days.length > 0) {
         const densest = days.reduce((best, day) => day.points > best.points ? day : best, days[0]);
         defaultIndex = items.findIndex(item => item.key === densest.key);
+      } else if (activeStart < Infinity && activeEnd > activeStart && (activeStart - firstObject > 2 * 3600000)) {
+        defaultIndex = items.findIndex(item => item.key === "active");
       }
       return { items, defaultIndex: Math.max(0, defaultIndex) };
     }
