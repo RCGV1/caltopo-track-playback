@@ -126,6 +126,7 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
     const map = L.map("map", { preferCanvas: true });
+    let playbackLayers = [];
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap contributors" }).addTo(map);
     map.setView([37.35, -122.15], 10);
     const API_BASE = window.PLAYBACK_API_BASE || "https://caltopo-track-playback.vercel.app";
@@ -160,8 +161,13 @@
         const seconds = Math.round((Date.now() - started) / 1000);
         loadingText.textContent = "Still loading CalTopo tracks... " + seconds + "s";
       }, 5000);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 65000);
       try {
-        const response = await fetch(API_BASE + "/api/playback?url=" + encodeURIComponent(input) + "&_=" + Date.now(), { cache: "no-store" });
+        const response = await fetch(API_BASE + "/api/playback?url=" + encodeURIComponent(input) + "&_=" + Date.now(), {
+          cache: "no-store",
+          signal: controller.signal
+        });
         const text = await response.text();
         let data;
         try {
@@ -176,8 +182,9 @@
       } catch (err) {
         document.getElementById("loader").hidden = false;
         document.querySelector(".topbar").hidden = true;
-        error.textContent = err.message || "Could not load playback.";
+        error.textContent = err.name === "AbortError" ? "Loading timed out. Try the map again or choose a smaller map." : (err.message || "Could not load playback.");
       } finally {
+        clearTimeout(timeout);
         clearInterval(statusTimer);
         loading.classList.remove("active");
         loadButton.disabled = false;
@@ -191,6 +198,8 @@
       if (!data.bounds || !Number.isFinite(data.bounds.minLat) || !Number.isFinite(data.bounds.minLng) || !Number.isFinite(data.bounds.maxLat) || !Number.isFinite(data.bounds.maxLng)) {
         throw new Error("The map returned tracks, but their map bounds were invalid.");
       }
+      playbackLayers.forEach(layer => map.removeLayer(layer));
+      playbackLayers = [];
       map.fitBounds(L.latLngBounds([data.bounds.minLat, data.bounds.minLng], [data.bounds.maxLat, data.bounds.maxLng]).pad(.08));
       const visible = new Set(data.tracks.map(t => t.id));
       const markerGroupsVisible = new Set((data.markerGroups || []).map(group => group.name));
@@ -215,6 +224,7 @@
       range.value = String(activeWindow);
       for (const track of data.tracks) {
         const layer = { line: L.polyline([], { color: track.color, weight: 3, opacity: .78 }).addTo(map), marker: L.marker([track.points[0].lat, track.points[0].lng], { icon: markerIcon(track, 1, 0), keyboard: false }).addTo(map), row: null };
+        playbackLayers.push(layer.line, layer.marker);
         layer.marker.bindTooltip(track.title, { permanent: true, direction: "top", offset: [0,-7], className: "playback-label", opacity: .95 });
         layers.set(track.id, layer);
         const row = document.createElement("label");
@@ -252,6 +262,7 @@
         }
         for (const marker of markers) {
           const layer = L.marker([marker.lat, marker.lng], { icon: staticMarkerIcon(marker), keyboard: false });
+          playbackLayers.push(layer);
           layer.bindPopup(markerPopup(marker));
           layer.bindTooltip(marker.title, { permanent: false, direction: "top", offset: [0,-12], className: "marker-label", opacity: .95 });
           markerLayers.set(marker.id, { marker, layer });
@@ -262,7 +273,7 @@
       function updateMarkers(at = current) {
         const masterVisible = markersToggle.checked;
         for (const { marker, layer } of markerLayers.values()) {
-          const markerHasAppeared = !Number.isFinite(marker.time) || marker.time <= at;
+          const markerHasAppeared = Number.isFinite(marker.time) && marker.time <= at;
           const shouldShow = masterVisible && markerGroupsVisible.has(marker.category) && markerHasAppeared;
           if (shouldShow && !map.hasLayer(layer)) layer.addTo(map);
           if (!shouldShow && map.hasLayer(layer)) layer.removeFrom(map);
