@@ -961,7 +961,7 @@
     body.dark-mode ::-webkit-scrollbar-thumb:hover {
       background: #475569;
     }
-    .theme-toggle-btn {
+    .theme-toggle-btn, .github-btn {
       display: inline-flex;
       align-items: center;
       gap: 5px;
@@ -970,9 +970,19 @@
       cursor: pointer;
       user-select: none;
       transition: all 0.15s ease;
+      text-decoration: none;
+      color: inherit;
     }
-    .theme-toggle-btn:hover {
+    .theme-toggle-btn:hover, .github-btn:hover {
       transform: translateY(-1px);
+    }
+    .disclaimer a {
+      color: var(--teal, #0b6f6a);
+      text-decoration: underline;
+      font-weight: 500;
+    }
+    body.dark-mode .disclaimer a {
+      color: var(--teal-light, #2dd4bf);
     }
   </style>
 </head>
@@ -993,6 +1003,10 @@
           <polygon points="14,8.5 20.2,12 14,15.5" fill="#ffffff"/>
         </svg>
         <h1 style="flex: 1;">CalTopo Playback Tool</h1>
+        <a id="githubBtnLoader" href="https://github.com/RCGV1/caltopo-track-playback" target="_blank" rel="noopener noreferrer" class="secondary mini-btn github-btn" title="View Source on GitHub" aria-label="GitHub repository">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          <span>GitHub</span>
+        </a>
         <button id="themeToggleLoader" class="secondary mini-btn theme-toggle-btn" type="button" title="Toggle Dark/Light Mode (D)" aria-label="Toggle dark mode">
           <span class="theme-icon">🌙</span> <span class="theme-text">Dark</span>
         </button>
@@ -1002,7 +1016,7 @@
         <button id="load" class="primary">Load</button>
       </form>
       <div class="hint">Replay timestamped Shape, AppTrack, FieldTrack, and LiveTrack lines from public or share-link maps.</div>
-      <p class="disclaimer" style="margin-top: 8px;">Independent tool. Not affiliated with, endorsed by, or sponsored by CalTopo.</p>
+      <p class="disclaimer" style="margin-top: 8px;">Independent open-source tool. <a href="https://github.com/RCGV1/caltopo-track-playback" target="_blank" rel="noopener noreferrer">View on GitHub</a>. Not affiliated with, endorsed by, or sponsored by CalTopo.</p>
       <div id="loading" class="loading">
         <div id="loadingText" class="loading-text">Loading CalTopo tracks...</div>
         <div class="progress"><span></span></div>
@@ -1087,6 +1101,10 @@
           <input id="activeOnly" type="checkbox" checked style="width: 14px; height: 14px; accent-color: #0b6f6a; cursor: pointer; margin: 0;">
           Active Only
         </label>
+        <a id="githubBtn" href="https://github.com/RCGV1/caltopo-track-playback" target="_blank" rel="noopener noreferrer" class="secondary mini-btn github-btn" title="View Source on GitHub" aria-label="GitHub repository">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          <span>GitHub</span>
+        </a>
         <button id="themeToggle" class="secondary mini-btn theme-toggle-btn" type="button" title="Toggle Dark/Light Mode (D)" aria-label="Toggle dark mode">
           <span class="theme-icon">🌙</span> <span class="theme-text">Dark</span>
         </button>
@@ -1383,11 +1401,11 @@
     document.getElementById("loadForm").addEventListener("submit", event => { event.preventDefault(); loadFromInput(); });
     document.getElementById("load").onclick = event => { event.preventDefault(); loadFromInput(); };
     document.getElementById("mapInput").addEventListener("keydown", event => { if (event.key === "Enter") loadFromInput(); });
-    window.addEventListener("keydown", event => {
+    window.addEventListener("keydown", (e) => {
       const tag = document.activeElement ? document.activeElement.tagName : "";
       if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
-      if (event.code === "KeyD" && !event.ctrlKey && !event.metaKey && !event.altKey) {
-        event.preventDefault();
+      if (e.code === "KeyD" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
         toggleTheme();
       }
     });
@@ -1454,7 +1472,16 @@
       }
     }
 
+    let activePlaybackCleanup = null;
+
     function startPlayback(data) {
+      if (activePlaybackCleanup) {
+        try { activePlaybackCleanup(); } catch (_) {}
+        activePlaybackCleanup = null;
+      }
+      const sessionController = new AbortController();
+      const { signal } = sessionController;
+
       if (!data || !Array.isArray(data.tracks) || data.tracks.length === 0) {
         throw new Error("No replayable timestamped tracks were found on this map.");
       }
@@ -1834,14 +1861,15 @@
           });
           markerLayers.set(marker.id, { marker, layer });
         }
-        markersToggle.onchange = updateMarkers;
+        markersToggle.onchange = () => updateMarkers(current);
         updateMarkers(current);
       }
 
       function updateMarkers(at = current) {
-        const masterVisible = markersToggle.checked;
+        const timestamp = typeof at === "number" ? at : current;
+        const masterVisible = markersToggle ? markersToggle.checked : true;
         for (const { marker, layer } of markerLayers.values()) {
-          const markerHasAppeared = Number.isFinite(marker.time) && marker.time <= at;
+          const markerHasAppeared = Number.isFinite(marker.time) && marker.time <= timestamp;
           const shouldShow = masterVisible && markerGroupsVisible.has(marker.category) && markerHasAppeared;
           if (shouldShow && !map.hasLayer(layer)) layer.addTo(map);
           if (!shouldShow && map.hasLayer(layer)) layer.removeFrom(map);
@@ -1876,19 +1904,28 @@
       }
 
       function fitWindowBounds() {
-        const bounds = [];
+        let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
+        let count = 0;
         for (const track of data.tracks) {
           for (const point of track.points) {
-            if (point.time >= viewStart && point.time <= viewEnd) bounds.push([point.lat, point.lng]);
+            if (point.time >= viewStart && point.time <= viewEnd) {
+              if (point.lat < minLat) minLat = point.lat;
+              if (point.lat > maxLat) maxLat = point.lat;
+              if (point.lng < minLng) minLng = point.lng;
+              if (point.lng > maxLng) maxLng = point.lng;
+              count++;
+            }
           }
         }
-        if (bounds.length) map.fitBounds(L.latLngBounds(bounds).pad(.08));
+        if (count > 0) {
+          map.fitBounds(L.latLngBounds([minLat, minLng], [maxLat, maxLng]).pad(.08));
+        }
       }
 
-      const dist = (a,b) => {
-        const R = 6371000, p1 = a.lat*Math.PI/180, p2 = b.lat*Math.PI/180, d1 = (b.lat-a.lat)*Math.PI/180, d2 = (b.lng-a.lng)*Math.PI/180;
-        const x = Math.sin(d1/2)**2 + Math.cos(p1)*Math.cos(p2)*Math.sin(d2/2)**2;
-        return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1-x));
+      const dist = (a, b) => {
+        const R = 6371000, p1 = a.lat * Math.PI / 180, p2 = b.lat * Math.PI / 180, d1 = (b.lat - a.lat) * Math.PI / 180, d2 = (b.lng - a.lng) * Math.PI / 180;
+        const x = Math.max(0, Math.min(1, Math.sin(d1 / 2) ** 2 + Math.cos(p1) * Math.cos(p2) * Math.sin(d2 / 2) ** 2));
+        return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
       };
 
       // Smooth heading with hysteresis: prevents flickering between angles or on/off
@@ -2220,13 +2257,13 @@
       // Tab Backgrounding & Focus Handling
       document.addEventListener("visibilitychange", () => {
         previousFrame = null;
-      });
+      }, { signal });
       window.addEventListener("blur", () => {
         previousFrame = null;
-      });
+      }, { signal });
       window.addEventListener("focus", () => {
         previousFrame = null;
-      });
+      }, { signal });
 
       // Keyboard Shortcuts (Space, L, Left, Right, Home, End)
       window.addEventListener("keydown", (e) => {
@@ -2257,11 +2294,8 @@
         } else if (e.code === "End") {
           e.preventDefault();
           update(viewEnd);
-        } else if (e.code === "KeyD" && !e.ctrlKey && !e.metaKey && !e.altKey) {
-          e.preventDefault();
-          toggleTheme();
         }
-      });
+      }, { signal });
 
       // ==========================================
       // VIDEO & GIF EXPORT PIPELINE WITH AUTO-CAM
@@ -2388,12 +2422,12 @@
 
       exportModal.addEventListener("click", (e) => {
         if (e.target === exportModal) closeExportModal();
-      });
+      }, { signal });
       window.addEventListener("keydown", (e) => {
         if (e.key === "Escape" && !exportModal.hidden && exportModal.style.display !== "none") {
           closeExportModal();
         }
-      });
+      }, { signal });
 
       // Mercator Point Helper for Canvas with NaN defense
       function mercatorProject(lat, lng, zoom, width, height, centerLat, centerLng) {
@@ -3153,7 +3187,6 @@
         const dict = new Map();
         function reset() {
           dict.clear();
-          for (let i = 0; i < clearCode; i++) dict.set(String(i), i);
           codeSize = minCodeSize + 1;
           maxCode = 1 << codeSize;
           nextCode = eoiCode + 1;
@@ -3181,16 +3214,20 @@
         }
 
         emit(clearCode);
-        let prefix = "";
+        let prefix = -1;
         for (let i = 0; i < pixels.length; i++) {
           const k = pixels[i];
-          const combo = prefix === "" ? String(k) : prefix + "," + k;
-          if (dict.has(combo)) {
-            prefix = combo;
+          if (prefix === -1) {
+            prefix = k;
+            continue;
+          }
+          const key = (prefix << 8) | k;
+          if (dict.has(key)) {
+            prefix = dict.get(key);
           } else {
-            emit(dict.get(prefix));
+            emit(prefix);
             if (nextCode < 4096) {
-              dict.set(combo, nextCode++);
+              dict.set(key, nextCode++);
               if (nextCode > maxCode && codeSize < 12) {
                 codeSize++;
                 maxCode = 1 << codeSize;
@@ -3199,10 +3236,10 @@
               emit(clearCode);
               reset();
             }
-            prefix = String(k);
+            prefix = k;
           }
         }
-        if (prefix !== "") emit(dict.get(prefix));
+        if (prefix !== -1) emit(prefix);
         emit(eoiCode);
         if (curBits > 0) subBlock.push(curAccum & 0xff);
         flush();
@@ -3445,6 +3482,9 @@
               const videoBlob = await recordPromise;
 
               const ext = videoMime.includes("mp4") ? "mp4" : "webm";
+              if (stream && typeof stream.getTracks === "function") {
+                stream.getTracks().forEach(t => { try { t.stop(); } catch (_) {} });
+              }
               const a = document.createElement("a");
               const blobUrl = URL.createObjectURL(videoBlob);
               a.href = blobUrl;

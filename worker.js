@@ -21,7 +21,7 @@ export default {
 
 async function playbackResponse(url) {
   try {
-    const data = await getPlayback(url.searchParams.get("url") || url.searchParams.get("map") || "");
+    const data = await getPlayback(url.searchParams.get("url") || url.searchParams.get("map") || url.searchParams.get("id") || "");
     return json(data, 200);
   } catch (error) {
     return json(

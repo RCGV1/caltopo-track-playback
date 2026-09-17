@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { test } from 'node:test';
-import { getPlayback } from '../api/playback.js';
+import { getPlayback, parseMapId } from '../api/playback.js';
 
 const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 const helpers = html.slice(html.indexOf('    function staticMarkerIcon('), html.lastIndexOf('  </script>'));
@@ -244,4 +244,39 @@ test('Tile flicker prevention: native zoom limits, multi-zoom parent fallbacks, 
 
   // 4. Debounced preview rendering
   assert.match(html, /scheduleExportPreviewRender/, 'Preview updates on tile load must be debounced via requestAnimationFrame');
+});
+
+test('Code quality and bug hardening: URL parsing, numerical stability, zero-leak sessions, and bit-packed LZW', () => {
+  // 1. URL and Map ID Parsing
+  assert.equal(parseMapId("04GP2VD"), "04GP2VD");
+  assert.equal(parseMapId("https://caltopo.com/m/04GP2VD"), "04GP2VD");
+  assert.equal(parseMapId("caltopo.com/m/04GP2VD"), "04GP2VD", "Should parse URLs without protocol scheme");
+  assert.equal(parseMapId("https://sartopo.com/m/ABC123"), "ABC123");
+  assert.equal(parseMapId("   "), "", "Empty string should return empty");
+  assert.equal(parseMapId("invalid-url-here"), "", "Invalid string should return empty");
+
+  // 2. Single KeyD listener to prevent double theme toggle
+  assert.match(html, /e\.code === "KeyD"/, 'D key keyboard shortcut must toggle dark mode');
+  // Check that KeyD is NOT duplicated inside playback loop
+  const innerShortcuts = html.slice(html.indexOf('// Keyboard Shortcuts (Space, L, Left, Right, Home, End)'), html.indexOf('// =========================================='));
+  assert.doesNotMatch(innerShortcuts, /KeyD/, 'Inner playback keydown handler must not duplicate KeyD toggle');
+
+  // 3. Markers toggle event parameter safety
+  assert.match(html, /markersToggle\.onchange = \(\) => updateMarkers\(current\)/, 'markersToggle must not forward DOM Event to updateMarkers');
+  assert.match(html, /typeof at === "number" \? at : current/, 'updateMarkers must guard timestamp argument against non-number');
+
+  // 4. Session lifecycle cleanup and zero-allocation bounds
+  assert.match(html, /let activePlaybackCleanup = null/, 'activePlaybackCleanup lifecycle handle must exist');
+  assert.match(html, /new AbortController\(\)/, 'Session controller must manage listener lifecycles');
+  assert.match(html, /let minLat = Infinity, maxLat = -Infinity/, 'fitWindowBounds must calculate bounds directly without allocating coordinate arrays');
+
+  // 5. Zero-allocation integer bit-packed LZW compression
+  assert.match(html, /const key = \(prefix << 8\) \| k/, 'LZW compressor must use bit-packed integer keys instead of string concatenation');
+
+  // 6. MediaStream release
+  assert.match(html, /stream\.getTracks\(\)\.forEach/, 'Video export must release captureStream tracks');
+
+  // 7. GitHub Repository Link
+  assert.match(html, /href="https:\/\/github\.com\/RCGV1\/caltopo-track-playback"/, 'GitHub repository links must be present in the UI');
+  assert.match(html, /id="githubBtn"/, 'Topbar GitHub button must be present');
 });

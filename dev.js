@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
 import { readFileSync, writeFileSync } from "node:fs";
+import { resolve, normalize } from "node:path";
 import { getPlayback, PlaybackError } from "./api/playback.js";
 
 const PORT = process.env.PORT || 3000;
@@ -105,18 +106,27 @@ const server = createServer(async (req, res) => {
     }
   }
 
-  const filePath = url.pathname === "/" ? "public/index.html" : `public${url.pathname}`;
-  const ext = url.pathname.slice(url.pathname.lastIndexOf("."));
+  const publicDir = resolve("public");
+  const cleanPath = normalize(url.pathname).replace(/^(\.\.[\/\\])+/, "");
+  const targetPath = cleanPath === "/" ? resolve("public/index.html") : resolve(publicDir, "." + cleanPath);
+
+  if (!targetPath.startsWith(publicDir)) {
+    res.writeHead(403, { "Content-Type": "text/plain" });
+    res.end("Forbidden");
+    return;
+  }
+
+  const ext = targetPath.slice(targetPath.lastIndexOf("."));
   const contentType = MIME_TYPES[ext] || "text/html; charset=utf-8";
 
   try {
-    const fileContent = readFileSync(filePath);
+    const fileContent = readFileSync(targetPath);
     res.writeHead(200, { "Content-Type": contentType });
     res.end(fileContent);
   } catch {
     // Fallback to index.html for SPA
     try {
-      const indexContent = readFileSync("public/index.html");
+      const indexContent = readFileSync(resolve("public/index.html"));
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
       res.end(indexContent);
     } catch {

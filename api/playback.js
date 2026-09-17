@@ -40,8 +40,12 @@ export function errorMessage(error) {
 }
 
 export function parseMapId(input) {
-  const value = String(input).trim();
+  let value = String(input || "").trim();
+  if (!value) return "";
   if (/^[A-Za-z0-9]{4,12}$/.test(value)) return value;
+  if (!/^[a-z]+:\/\//i.test(value)) {
+    value = "https://" + value;
+  }
   try {
     const url = new URL(value);
     const match = url.pathname.match(/\/m\/([A-Za-z0-9]+)/);
@@ -87,10 +91,14 @@ async function exportMap(mapId) {
 
   tracks.sort((left, right) => left.start - right.start || left.title.localeCompare(right.title));
   markers.sort((left, right) => left.category.localeCompare(right.category) || left.title.localeCompare(right.title));
-  if (tracks.length === 0) throw new Error(`No timestamped line tracks found on map ${mapId}.`);
+  if (tracks.length === 0) throw new PlaybackError(`No timestamped line tracks found on map ${mapId}.`, 404);
 
-  const start = Math.min(...tracks.map((track) => track.start));
-  const end = Math.max(...tracks.map((track) => track.end));
+  let start = Infinity;
+  let end = -Infinity;
+  for (const track of tracks) {
+    if (track.start < start) start = track.start;
+    if (track.end > end) end = track.end;
+  }
   const bounds = tracks.reduce(
     (acc, track) => {
       for (const point of track.points) {
@@ -223,7 +231,7 @@ function haversineDistance(a, b) {
   const dLng = ((b.lng - a.lng) * Math.PI) / 180;
   const sinLat = Math.sin(dLat / 2);
   const sinLng = Math.sin(dLng / 2);
-  const h = sinLat * sinLat + Math.cos(p1) * Math.cos(p2) * sinLng * sinLng;
+  const h = Math.max(0, Math.min(1, sinLat * sinLat + Math.cos(p1) * Math.cos(p2) * sinLng * sinLng));
   return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
 }
 
@@ -323,6 +331,7 @@ function markerImage(properties, icons) {
 }
 
 const markerIconDataCache = new Map();
+const MAX_ICON_CACHE_ENTRIES = 500;
 
 async function attachMarkerIconData(markers) {
   const uniqueUrls = new Set();
@@ -331,6 +340,11 @@ async function attachMarkerIconData(markers) {
     if (m.iconUrl && !markerIconDataCache.has(m.iconUrl)) uniqueUrls.add(m.iconUrl);
   }
   if (uniqueUrls.size > 0) {
+    // Prevent unbounded memory growth across multiple map requests
+    if (markerIconDataCache.size + uniqueUrls.size > MAX_ICON_CACHE_ENTRIES) {
+      const keysToDelete = Array.from(markerIconDataCache.keys()).slice(0, 150);
+      for (const k of keysToDelete) markerIconDataCache.delete(k);
+    }
     await Promise.all(Array.from(uniqueUrls).map(async (url) => {
       try {
         const controller = new AbortController();
