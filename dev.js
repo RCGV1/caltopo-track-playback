@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve, normalize } from "node:path";
-import { getPlayback, PlaybackError } from "./api/playback.js";
+import { errorMessage, getPlayback, PlaybackError } from "./api/playback.js";
 
 const PORT = process.env.PORT || 3000;
 const MIME_TYPES = {
@@ -31,9 +31,17 @@ const server = createServer(async (req, res) => {
       res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
       res.end(JSON.stringify(data));
     } catch (err) {
-      const status = err instanceof PlaybackError ? err.status : 500;
+      const isPlayback = err instanceof PlaybackError;
+      const status = isPlayback ? err.status : 500;
+      const resPayload = {
+        error: errorMessage(err),
+        code: isPlayback ? err.code : "INTERNAL_ERROR"
+      };
+      if (isPlayback && err.mapId) {
+        resPayload.mapId = err.mapId;
+      }
       res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
-      res.end(JSON.stringify({ error: err.message || "Failed to load playback data." }));
+      res.end(JSON.stringify(resPayload));
     }
     return;
   }

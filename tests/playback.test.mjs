@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { test } from 'node:test';
-import { getPlayback, parseMapId } from '../api/playback.js';
+import { getPlayback, parseMapId, handler, PlaybackError, errorMessage } from '../api/playback.js';
 
 const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 const helpers = html.slice(html.indexOf('    function staticMarkerIcon('), html.lastIndexOf('  </script>'));
@@ -279,4 +279,96 @@ test('Code quality and bug hardening: URL parsing, numerical stability, zero-lea
   // 7. GitHub Repository Link
   assert.match(html, /href="https:\/\/github\.com\/RCGV1\/caltopo-track-playback"/, 'GitHub repository links must be present in the UI');
   assert.match(html, /id="githubBtn"/, 'Topbar GitHub button must be present');
+});
+
+test('CalTopo 401/403 permission denied returns PERMISSION_DENIED code, mapId, and actionable instructions', async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    // 1. Backend: 403 Forbidden on map summary
+    globalThis.fetch = async () => ({
+      ok: false,
+      status: 403,
+      text: async () => JSON.stringify({ error: "Access Denied" })
+    });
+
+    await assert.rejects(
+      async () => getPlayback("PRIV123"),
+      (err) => {
+        assert.ok(err instanceof PlaybackError);
+        assert.equal(err.status, 403);
+        assert.equal(err.code, "PERMISSION_DENIED");
+        assert.equal(err.mapId, "PRIV123");
+        assert.match(err.message, /CalTopo permission denied: This map is private/);
+        assert.match(err.message, /URL Viewable/);
+        return true;
+      }
+    );
+
+    // 2. Backend: 401 Unauthorized
+    globalThis.fetch = async () => ({
+      ok: false,
+      status: 401,
+      text: async () => "Unauthorized"
+    });
+
+    await assert.rejects(
+      async () => getPlayback("SECRET77"),
+      (err) => {
+        assert.ok(err instanceof PlaybackError);
+        assert.equal(err.status, 401);
+        assert.equal(err.code, "PERMISSION_DENIED");
+        assert.equal(err.mapId, "SECRET77");
+        return true;
+      }
+    );
+
+    // 3. Serverless API handler responds with 403 status and structured JSON
+    let responseStatus = 0;
+    let responseJson = null;
+    const mockRes = {
+      setHeader: () => {},
+      status(s) { responseStatus = s; return this; },
+      json(j) { responseJson = j; return this; },
+      end() {}
+    };
+    globalThis.fetch = async () => ({
+      ok: false,
+      status: 403,
+      text: async () => ""
+    });
+    await handler({ method: "GET", query: { map: "PRIV123" } }, mockRes);
+    assert.equal(responseStatus, 403);
+    assert.equal(responseJson.code, "PERMISSION_DENIED");
+    assert.equal(responseJson.mapId, "PRIV123");
+    assert.match(responseJson.error, /CalTopo permission denied/);
+
+    // 4. CalTopo 404 summary returns NOT_FOUND code
+    globalThis.fetch = async () => ({
+      ok: false,
+      status: 404,
+      text: async () => ""
+    });
+    await assert.rejects(
+      async () => getPlayback("MISSING99"),
+      (err) => {
+        assert.ok(err instanceof PlaybackError);
+        assert.equal(err.status, 404);
+        assert.equal(err.code, "NOT_FOUND");
+        assert.equal(err.mapId, "MISSING99");
+        return true;
+      }
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  // 5. Frontend UI error banner styles & step-by-step instructions parity
+  assert.match(html, /\.error-banner/, 'Error banner style must be defined');
+  assert.match(html, /\.error-banner\.permission-error/, 'Permission error banner variant must be supported');
+  assert.match(html, /CalTopo Permission Denied \(Map is Private\)/, 'Permission denied headline must be present');
+  assert.match(html, /How to enable playback in CalTopo:/, 'Clear step-by-step instructions header must be present');
+  assert.match(html, /URL Viewable/, 'URL Viewable guidance must be highlighted');
+  assert.match(html, /Open in CalTopo/, 'Direct link button to open map in CalTopo must be present');
+  assert.match(html, /Try Public Demo \(SAR Academy\)/, 'Fallback button to try public demo map must be provided');
+  assert.match(html, /body\.dark-mode \.error-banner/, 'Dark mode error banner styling must be defined');
 });

@@ -5,13 +5,16 @@ const MIN_POINTS = 2;
 const FETCH_CONCURRENCY = 8;
 
 export class PlaybackError extends Error {
-  constructor(message, status = 500) {
+  constructor(message, status = 500, code = "PLAYBACK_ERROR", mapId = "") {
     super(message);
+    this.name = "PlaybackError";
     this.status = status;
+    this.code = code;
+    this.mapId = mapId;
   }
 }
 
-export default async function handler(request, response) {
+export async function handler(request, response) {
   response.setHeader("Access-Control-Allow-Origin", "*");
   response.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
   response.setHeader("Access-Control-Allow-Headers", "Accept, Content-Type");
@@ -22,15 +25,22 @@ export default async function handler(request, response) {
     const data = await getPlayback(request.query.url || request.query.map || request.query.id || "");
     return response.status(200).json(data);
   } catch (error) {
-    return response.status(error instanceof PlaybackError ? error.status : 500).json({
-      error: errorMessage(error)
-    });
+    const isPlayback = error instanceof PlaybackError;
+    const resPayload = {
+      error: errorMessage(error),
+      code: isPlayback ? error.code : "INTERNAL_ERROR"
+    };
+    if (isPlayback && error.mapId) {
+      resPayload.mapId = error.mapId;
+    }
+    return response.status(isPlayback ? error.status : 500).json(resPayload);
   }
 }
+export default handler;
 
 export async function getPlayback(input) {
   const mapId = parseMapId(input);
-  if (!mapId) throw new PlaybackError("Paste a CalTopo map URL or map ID.", 400);
+  if (!mapId) throw new PlaybackError("Paste a CalTopo map URL or map ID.", 400, "INVALID_INPUT");
   return exportMap(mapId);
 }
 
@@ -49,14 +59,19 @@ export function parseMapId(input) {
   try {
     const url = new URL(value);
     const match = url.pathname.match(/\/m\/([A-Za-z0-9]+)/);
-    return match?.[1] || "";
+    if (match?.[1]) return match[1];
+    const idParam = url.searchParams.get("id");
+    if (idParam && /^[A-Za-z0-9]{4,12}$/.test(idParam)) return idParam;
+    const hashMatch = url.hash.match(/[#&]id=([A-Za-z0-9]{4,12})/);
+    if (hashMatch?.[1]) return hashMatch[1];
+    return "";
   } catch {
     return "";
   }
 }
 
 async function exportMap(mapId) {
-  const summary = await fetchJson(`https://caltopo.com/api/v1/map/${mapId}/since/0`, "map summary");
+  const summary = await fetchJson(`https://caltopo.com/api/v1/map/${mapId}/since/0`, "map summary", mapId);
   const idsByClass = summary?.result?.ids || {};
   const tracks = [];
   const folders = new Map();
@@ -91,7 +106,7 @@ async function exportMap(mapId) {
 
   tracks.sort((left, right) => left.start - right.start || left.title.localeCompare(right.title));
   markers.sort((left, right) => left.category.localeCompare(right.category) || left.title.localeCompare(right.title));
-  if (tracks.length === 0) throw new PlaybackError(`No timestamped line tracks found on map ${mapId}.`, 404);
+  if (tracks.length === 0) throw new PlaybackError(`No timestamped line tracks found on map ${mapId}.`, 404, "NO_TRACKS", mapId);
 
   let start = Infinity;
   let end = -Infinity;
@@ -144,7 +159,8 @@ async function fetchMapObjects(mapId, idsByClass, classNames) {
     id,
     feature: (await fetchJson(
       `https://caltopo.com/api/v1/map/${mapId}/${className}/${encodeURIComponent(id)}`,
-      `${className} ${id}`
+      `${className} ${id}`,
+      mapId
     ))?.result
   }));
 }
@@ -162,24 +178,38 @@ async function mapWithConcurrency(items, limit, mapper) {
   return results;
 }
 
-async function fetchJson(url, description) {
+async function fetchJson(url, description, mapId = "") {
   let response;
   try {
     response = await fetch(url, { headers: { Accept: "application/json" } });
   } catch {
-    throw new PlaybackError(`CalTopo could not be reached while loading ${description}.`, 502);
+    throw new PlaybackError(`CalTopo could not be reached while loading ${description}.`, 502, "NETWORK_ERROR", mapId);
   }
   const text = await response.text();
   if (!response.ok) {
-    const message = response.status === 401 || response.status === 403
-      ? "CalTopo denied access to this map. Verify the shared map link."
-      : `CalTopo could not load ${description} (HTTP ${response.status}).`;
-    throw new PlaybackError(message, response.status >= 400 && response.status < 500 ? response.status : 502);
+    if (response.status === 401 || response.status === 403) {
+      throw new PlaybackError(
+        "CalTopo permission denied: This map is private. In CalTopo, open the map, click 'Share' (top left), and change access to 'URL Viewable' or 'Public'.",
+        response.status,
+        "PERMISSION_DENIED",
+        mapId
+      );
+    }
+    if (response.status === 404 && description.includes("map summary")) {
+      throw new PlaybackError(
+        `CalTopo map not found: Map '${mapId || "unknown"}' does not exist or access is restricted. Make sure the map ID is correct and map permissions are set to 'URL Viewable' or 'Public'.`,
+        404,
+        "NOT_FOUND",
+        mapId
+      );
+    }
+    const message = `CalTopo could not load ${description} (HTTP ${response.status}).`;
+    throw new PlaybackError(message, response.status >= 400 && response.status < 500 ? response.status : 502, "UPSTREAM_ERROR", mapId);
   }
   try {
     return text ? JSON.parse(text) : null;
   } catch {
-    throw new PlaybackError(`CalTopo returned an invalid response while loading ${description}.`, 502);
+    throw new PlaybackError(`CalTopo returned an invalid response while loading ${description}.`, 502, "INVALID_RESPONSE", mapId);
   }
 }
 

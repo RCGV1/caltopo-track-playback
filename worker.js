@@ -24,10 +24,15 @@ async function playbackResponse(url) {
     const data = await getPlayback(url.searchParams.get("url") || url.searchParams.get("map") || url.searchParams.get("id") || "");
     return json(data, 200);
   } catch (error) {
-    return json(
-      { error: errorMessage(error) },
-      error instanceof PlaybackError ? error.status : 500
-    );
+    const isPlayback = error instanceof PlaybackError;
+    const resPayload = {
+      error: errorMessage(error),
+      code: isPlayback ? error.code : "INTERNAL_ERROR"
+    };
+    if (isPlayback && error.mapId) {
+      resPayload.mapId = error.mapId;
+    }
+    return json(resPayload, isPlayback ? error.status : 500);
   }
 }
 
