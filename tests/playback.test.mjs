@@ -372,3 +372,22 @@ test('CalTopo 401/403 permission denied returns PERMISSION_DENIED code, mapId, a
   assert.match(html, /Try Public Demo \(SAR Academy\)/, 'Fallback button to try public demo map must be provided');
   assert.match(html, /body\.dark-mode \.error-banner/, 'Dark mode error banner styling must be defined');
 });
+
+test('dist function is hoisted before distance calculation to prevent TDZ ReferenceError', () => {
+  const distDeclPos = html.indexOf('function dist(a, b) {');
+  const distUsagePos = html.indexOf('meters += dist(track.points[i - 1], track.points[i]);');
+  assert.ok(distDeclPos !== -1, 'dist helper must be declared');
+  assert.ok(distUsagePos !== -1, 'dist helper usage must exist');
+  assert.ok(distDeclPos < distUsagePos, 'dist helper must be declared before track distance calculation loop');
+
+  // Verify function execution in sandbox
+  const distFuncCode = html.slice(distDeclPos, html.indexOf('// Calculate track distances', distDeclPos));
+  const { dist } = runInNewContext(distFuncCode + '\n({dist})');
+  const ptA = { lat: 47.0, lng: -122.0 };
+  const ptB = { lat: 47.01, lng: -122.01 };
+  const d = dist(ptA, ptB);
+  assert.ok(d > 1000 && d < 2000, `Distance should be ~1340m, got ${d}`);
+
+  // Test that interp is declared as hoisted function
+  assert.match(html, /function interp\(track, at\)/, 'interp must be a function declaration');
+});
