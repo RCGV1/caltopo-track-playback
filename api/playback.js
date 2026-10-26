@@ -73,6 +73,14 @@ export function parseMapId(input) {
 async function exportMap(mapId) {
   const summary = await fetchJson(`https://caltopo.com/api/v1/map/${mapId}/since/0`, "map summary", mapId);
   const idsByClass = summary?.result?.ids || {};
+  // The map snapshot has complete track histories. Individual AppTrack and
+  // LiveTrack endpoints can return only the most recent position.
+  const snapshot = summary?.result?.state?.features;
+  const stateFeatures = new Map(
+    (Array.isArray(snapshot) ? snapshot : [])
+      .filter((feature) => feature?.id && feature?.properties?.class)
+      .map((feature) => [`${feature.properties.class}:${feature.id}`, feature])
+  );
   const tracks = [];
   const folders = new Map();
   const markers = [];
@@ -83,15 +91,15 @@ async function exportMap(mapId) {
     ])
   );
 
-  const folderFeatures = await fetchMapObjects(mapId, idsByClass, FOLDER_CLASSES);
+  const folderFeatures = await fetchMapObjects(mapId, idsByClass, FOLDER_CLASSES, stateFeatures);
   for (const { feature, id } of folderFeatures) {
     const folder = normalizeFolder(feature, id);
     if (folder) folders.set(id, folder);
   }
 
   const [trackFeatures, markerFeatures] = await Promise.all([
-    fetchMapObjects(mapId, idsByClass, CLASSES),
-    fetchMapObjects(mapId, idsByClass, MARKER_CLASSES)
+    fetchMapObjects(mapId, idsByClass, CLASSES, stateFeatures),
+    fetchMapObjects(mapId, idsByClass, MARKER_CLASSES, stateFeatures)
   ]);
   for (const { feature, className, id } of trackFeatures) {
     const track = normalizeTrack(feature, className, id, folders);
@@ -147,7 +155,7 @@ async function exportMap(mapId) {
   };
 }
 
-async function fetchMapObjects(mapId, idsByClass, classNames) {
+async function fetchMapObjects(mapId, idsByClass, classNames, stateFeatures) {
   const objects = classNames.flatMap((className) =>
     (Array.isArray(idsByClass[className]) ? idsByClass[className] : []).map((id) => ({
       className,
@@ -157,7 +165,7 @@ async function fetchMapObjects(mapId, idsByClass, classNames) {
   return mapWithConcurrency(objects, FETCH_CONCURRENCY, async ({ className, id }) => ({
     className,
     id,
-    feature: (await fetchJson(
+    feature: stateFeatures.get(`${className}:${id}`) || (await fetchJson(
       `https://caltopo.com/api/v1/map/${mapId}/${className}/${encodeURIComponent(id)}`,
       `${className} ${id}`,
       mapId

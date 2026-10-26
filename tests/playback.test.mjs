@@ -73,6 +73,41 @@ test('API preserves CalTopo colors, fill, rotation, numeric scale and custom ico
   } finally { globalThis.fetch = originalFetch; }
 });
 
+test('map snapshot supplies full AppTrack and LiveTrack histories', async () => {
+  const originalFetch = globalThis.fetch;
+  const detailRequests = [];
+  const feature = (id, className, count) => ({
+    id,
+    properties: { class: className, title: id },
+    geometry: {
+      type: 'LineString',
+      coordinates: Array.from({ length: count }, (_, index) => [-122 + index / 1000, 37, 0, 1000 + index * 1000])
+    }
+  });
+  globalThis.fetch = async url => {
+    const path = new URL(url).pathname;
+    if (path.endsWith('/since/0')) {
+      return Response.json({ result: {
+        ids: { Shape: ['route'], AppTrack: ['phone'], LiveTrack: ['aprs', 'fallback'] },
+        state: { features: [
+          feature('route', 'Shape', 2),
+          feature('phone', 'AppTrack', 3),
+          feature('aprs', 'LiveTrack', 4)
+        ] }
+      } });
+    }
+    detailRequests.push(path);
+    return Response.json({ result: feature('fallback', 'LiveTrack', 2) });
+  };
+  try {
+    const data = await getPlayback('ABCDE');
+    assert.deepEqual(data.tracks.map(track => [track.id, track.pointCount]), [
+      ['aprs', 4], ['fallback', 2], ['phone', 3], ['route', 2]
+    ]);
+    assert.deepEqual(detailRequests, ['/api/v1/map/ABCDE/LiveTrack/fallback']);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
 test('UI layout prevents element overlap and includes CalTopo parity features', () => {
   assert.match(html, /z-index:\s*1100/, 'Topbar and panels must use z-index 1100 above Leaflet panes and controls');
   assert.match(html, /id="coordsDisplay"/, 'Coordinates status bar must be present for CalTopo parity');
